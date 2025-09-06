@@ -52,8 +52,7 @@ Integration Plan
    - Replace `_BASE_STYLES` and the hardcoded weight map in `_infer_weight_and_italic_from_subfamily` with `lookup_value` over canonical and alias phrases.
    - Keep italic detection as is; if no weight match is found, return `400` only if the config maps a term like `Regular`; otherwise return `None` for weight.
 3. `createcollection.py`
-   - Remove `WEIGHT_MAP`; use `lookup_value` for parsing names/tokens.
-   - Sorting by weight remains the same: fonts with unknown weight sort after known weights.
+   - No dependency. Sorting uses OS/2 values; no name/token parsing.
 
 Error Handling
 --------------

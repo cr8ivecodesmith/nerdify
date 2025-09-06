@@ -3,8 +3,8 @@ Font Collection Creator — Implementation Plan
 
 Overview
 --------
-- Goal: Implement `createcollection.py`, a Python CLI that creates a TTC/OTC from a set of fonts, following the Spec (`./spec.md`) and aligning naming with the Collection Naming Playbook (`./spec-naming.md`).
-- Approach: Keep discovery, naming, and sorting pure and testable; isolate FontTools I/O and writing to one place. Prefer explicit validation and clear, actionable errors.
+- Goal: Implement `createcollection.py`, a Python CLI that creates a TTC/OTC from a set of fonts, following the Spec (`./spec.md`). Naming normalization is handled by `nameadjust.py`; this tool does not infer weight/style from names.
+- Approach: Keep discovery, minimal basename inference, and OS/2-based sorting pure and testable; isolate FontTools I/O and writing. Prefer explicit validation and clear, actionable errors.
 
 CLI Design
 ----------
@@ -25,8 +25,7 @@ Dependencies
 
 Constants & Types
 -----------------
-- `WEIGHT_MAP: dict[str, int]` — maps canonical weight keywords to numeric values (e.g., `"thin":100`, `"extra light":200`, ..., `"black":900`). Include synonyms (`"extrabold" → 800`, `"semi bold" → 600`).
-- `ITALIC_TOKENS: set[str]` — `{ "italic", "oblique" }`.
+- `ITALIC_TOKENS: set[str]` — `{ "italic", "oblique" }` (used only for minimal basename fallback).
 - `SUPPORTED_EXTS = {".ttf", ".otf"}`.
 
 Core Functions
@@ -48,10 +47,10 @@ Core Functions
   - Lazy-import `TTFont`; open with `lazy=True`; prefer Typographic IDs 16 (Family) and 17 (Subfamily); fallback to Legacy IDs 1/2. Prefer Windows (3,1,0x409) then Mac (1,0,0). Normalize whitespace; return `None` if unavailable.
 
 - `def tokenize_stem(stem: str) -> list[str]`
-  - Split on `-` and `_`, collapse empties; lowercase tokens; keep alnum and words.
+  - Split on `-` and `_`, collapse empties; lowercase tokens.
 
-- `def strip_style_tokens(tokens: list[str]) -> list[str]`
-  - Remove tokens matching weight keywords and italic markers; keep others for base-name derivation.
+- `def _strip_nonfamily_tokens(tokens: list[str]) -> list[str]`
+  - Remove only obvious non-family tokens for basename inference: Italic/Oblique; `VF`/`Variable`/`Var`; version-like tokens.
 
 - `def common_token_prefix(list_of_tokens: Sequence[list[str]]) -> list[str]`
   - Compute the longest common prefix over lists of tokens.
@@ -60,14 +59,13 @@ Core Functions
   - Replace spaces with `-`, drop chars outside `[A-Za-z0-9._-]`, collapse `-`, trim edges.
 
 - `def derive_collection_basename(fonts: Sequence[Path]) -> str`
-  - Attempt internal Family consensus: collect Typographic Families (ID 16); if a single non-empty normalized family exists, use it. Else fall back to Legacy Family (ID 1) consensus. Else, use filename path: humanize stems via `tokenize_stem` → `strip_style_tokens`, compute `common_token_prefix`; if empty, fallback to parent directory name of first font (or stem of first font). Sanitize final.
+  - Attempt internal Family consensus: collect Typographic Families (ID 16); if a single non-empty normalized family exists, use it. Else, use filename path: tokenize stems → drop only non-family tokens → `common_token_prefix`; if empty, fallback to parent directory name of first font (or stem). Sanitize final.
 
-- `def weight_and_style_from_names(family: str | None, subfamily: str | None, stem: str) -> tuple[int | None, bool]`
-  - Determine weight (numeric) and italic flag from Typographic Subfamily (ID 17) when available; fallback to Legacy Subfamily (ID 2) and then family/stem tokens using `WEIGHT_MAP` and `ITALIC_TOKENS`. Treat Bold strictly (don’t infer from Medium/600).
-  - Style normalization note: when interpreting style phrases, `Italic` should be considered a modifier that appears at the end (e.g., `Regular Italic`). Inputs normalized by `nameadjust.py` already follow this.
+- `def read_weight_and_italic(path: Path) -> tuple[int | None, bool]`
+  - Read `OS/2.usWeightClass` for weight; read `OS/2.fsSelection` bit 0 for Italic with `head.macStyle` bit 1 fallback.
 
 - `def sort_fonts(fonts: Sequence[Path]) -> list[Path]`
-  - Build tuples `(weight or 1000, italic as int (0 for roman, 1 for italic), normalized_stem)` and sort.
+  - Build tuples `(OS/2 weight or 1000, italic flag, filename)` and sort.
 
 - `def write_collection(fonts: Sequence[Path], out_path: Path, kind: Literal["ttc", "otc"]) -> None`
   - Validate with `sniff_sfnt_type` against `kind` (`ttc`→`ttf`, `otc`→`otf`).
@@ -80,7 +78,7 @@ Core Functions
 
 Implementation Notes
 --------------------
-- Purity & testability: keep discovery, naming, tokenization, sorting pure. Hide FontTools behind `read_family_and_subfamily` and `write_collection` for easy mocking. Ensure name reads prefer IDs 16/17 with 1/2 fallback.
+- Purity & testability: keep discovery, minimal basename logic, tokenization, and sorting pure. Hide FontTools behind `read_family_and_subfamily`, `read_weight_and_italic`, and `write_collection` for easy mocking. Ensure name reads prefer ID 16.
 - Performance: use `lazy=True` when opening TTFont to avoid parsing entire tables. Collection writing remains I/O bound; inputs typically small N.
 - Determinism: sort inputs deterministically before any processing; use consistent tokenization and normalization.
 - Formatting: retain original Family case when used as filename base; only sanitize for filesystem safety.
@@ -98,9 +96,9 @@ Testing Plan
   - `discover_fonts`: files/dirs mix, suffix filter, de-dupe, sorted outputs.
   - `sniff_sfnt_type`: header bytes classification; error on unknown header (use temp files with minimal bytes).
   - `infer_collection_type`: ttf-only→ttc, otf-only→otc, mixed→error; forced type validation.
-  - `tokenize_stem` / `strip_style_tokens` / `common_token_prefix` / `sanitize_filename`: tokenization and naming edge cases.
+  - `tokenize_stem` / `_strip_nonfamily_tokens` / `common_token_prefix` / `sanitize_filename`: tokenization and minimal basename logic.
   - `derive_collection_basename`: internal-name consensus vs filename fallback; sanitization; fallback to parent dir name.
-  - `weight_and_style_from_names` and `sort_fonts`: mapping correctness and deterministic order; italic precedence.
+  - `read_weight_and_italic` and `sort_fonts`: deterministic order; italic precedence.
   - `write_collection`: monkeypatch `TTFont` and `TTCollection` to capture calls, validate open order and `save` path; ensure files are closed on error.
 - CLI smoke tests: parse-only with `--dry-run` over temp dummy files; validate printed plan and exit code.
 

@@ -15,16 +15,14 @@ createcollection.py [font files or dirs ...] [-o OUTDIR] [--type {ttc,otc}] [--n
 - Determines the collection container format automatically unless overridden:
   - If `--type` is specified, enforce it (`ttc` for TrueType, `otc` for CFF/OpenType).
   - If not specified, infer from inputs: all TTF → TTC; all OTF → OTC; mixed types → error.
-- Orders fonts deterministically in the collection using a weight/style heuristic:
-  - Sort by recognized weight (100–900 Thin→Black), then Roman before Italic.
-  - When weight/style cannot be determined from internal names, fall back to filename heuristics.
-- Names the output collection file based on internal names when possible, with a clear fallback:
+- Orders fonts deterministically using OS/2 metadata:
+  - Sort by `OS/2.usWeightClass` ascending, then Roman before Italic (via `OS/2.fsSelection` or `head.macStyle`), then by filename as a tiebreaker.
+- Names the output collection file based on internal names when possible, with a minimal filename fallback:
   - Preferred: use the common Typographic Family (nameID 16) shared by all fonts: `<Family>.ttc|.otc`.
-  - If nameID 16 is missing or inconsistent, fall back to a common Legacy Family (nameID 1) when consistent.
-  - If internal families still differ or are missing, compute a base name from filename stems by removing trailing weight/style tokens and taking the longest common non-empty prefix of tokens: `<BaseName>.ttc|.otc`.
+  - If internal families differ or are missing, tokenize filename stems on `-`/`_`, drop only obvious non‑family markers (Italic/Oblique, `VF`/`Variable`/`Var`, and version‑like tokens such as `0902`, `v1.2`), compute the longest common non‑empty token prefix, and join preserving casing from the first filename: `<BaseName>.ttc|.otc`.
   - Normalize the final filename to safe characters (A–Z, a–z, 0–9, dash, underscore, dot); convert spaces to underscores, retain dashes, and collapse repeats.
   - Allow explicit override via `--name NAME` (filename becomes `NAME.ttc|.otc`).
-  - Style normalization note: when deriving or interpreting style phrases, ensure `Italic` appears at the end (e.g., filenames like `CoolFont_Italic-Regular.ttf` are treated as `CoolFont-Regular_Italic.ttf` when normalized by `nameadjust.py`).
+  - Note: weight/style heuristics are not used here; run `nameadjust.py` beforehand to normalize name tables if needed.
 - Validates compatibility constraints to avoid creating invalid collections:
   - All inputs must share the same SFNT flavor: TrueType (`\x00\x01\x00\x00`) for TTC, or CFF/CFF2 (`OTTO`) for OTC.
   - Reject mixed outline types (e.g., mixing TTF and OTF) unless the user forces `--type` and all fonts actually match the enforced type; otherwise, error with guidance.
@@ -52,8 +50,8 @@ createcollection.py [font files or dirs ...] [-o OUTDIR] [--type {ttc,otc}] [--n
    - Normalization: strip extra whitespace; map multiple spaces to one; keep original case; do not inject style tokens.
 
 2) Filename path (fallback):
-   - Derive humanized stems by splitting on `_` and `-`, removing known style/weight tokens (e.g., Regular, Bold, Italic, Thin… Extra Bold), markers like `VF`/`VAR`, and version tokens that look like `^(?:v)?\d+(?:[._]\d+)*$` (e.g., `0902`, `v1`, `1.0`, `v1.2.3`); then join remaining tokens with spaces.
-   - Compute the longest common prefix by tokens; if empty, use the immediate parent directory name.
+   - Split stems on `_` and `-`, lowercase for matching; drop only obvious non‑family tokens: Italic/Oblique; `VF`/`Variable`/`Var`; version‑like tokens `^(?:v)?\d+(?:[._]\d+)*$`.
+   - Compute the longest common prefix by tokens; join tokens preserving original casing from the first filename; if empty, use the immediate parent directory name.
 
 3) Filesystem-safe conversion:
    - Replace spaces with `_`, remove characters outside `[A-Za-z0-9._-]`, collapse repeated `_` and `-`, trim leading/trailing separators.
@@ -63,14 +61,11 @@ Examples:
 - If ID 16 is missing but Legacy Family (ID 1) matches `Cool Font`, use `Cool_Font`.
 - Mixed families or missing internals, filenames like `CoolFont-Regular.ttf`, `CoolFont-Bold.ttf`: `CoolFont.ttc`.
 
-## Sorting Heuristic
+## Sorting
 
-- Use the following weight order when determinable: 100 Thin, 200 Extra Light, 300 Light, 400 Regular, 500 Medium, 600 Semi Bold, 700 Bold, 800 Extra Bold, 900 Black.
-- Roman precedes Italic for the same weight.
-- Source of truth for style/italic and weight:
-  - Prefer Typographic Subfamily (nameID 17); fallback to Legacy Subfamily (nameID 2); finally filename tokens.
-  - Treat “Bold” strictly for bold-only styles (do not infer bold from Medium/600).
-- If no internal name-based weight is detected, infer from filename tokens; otherwise, leave relative order but maintain deterministic sort by filename as a final tiebreaker.
+- Primary key: `OS/2.usWeightClass` (ascending). Fonts without OS/2 weight sort last (use a large sentinel like 1000).
+- Secondary key: Roman before Italic. Determine Italic via `OS/2.fsSelection` bit 0, with `head.macStyle` bit 1 as a fallback.
+- Tertiary key: filename (case-insensitive) for deterministic ordering.
 
 ## Constraints & Scope
 
@@ -108,17 +103,23 @@ Examples:
 - `def infer_collection_type(paths: list[Path], forced: str | None) -> Literal["ttc", "otc"]`
   - From `forced` or uniform input types; raise on mixed inputs.
 
-- `def read_family_and_style(path: Path) -> tuple[str | None, str | None]`
+- `def read_family_and_subfamily(path: Path) -> tuple[str | None, str | None]`
   - Returns `(family, subfamily)` from the name table, preferring Typographic IDs (16/17) with Legacy IDs (1/2) fallback.
 
-- `def humanize_stem(stem: str) -> list[str]`
-  - Tokenizes and removes style/weight tokens (aligned with the playbook); returns remaining tokens for naming.
+- `def tokenize_stem(stem: str) -> list[str]`
+  - Split a stem into lowercase tokens on `-` and `_`.
+
+- `def _strip_nonfamily_tokens(tokens: list[str]) -> list[str]`
+  - Remove only Italic/Oblique, `VF`/`Variable`/`Var`, and version-like tokens.
 
 - `def derive_collection_basename(fonts: list[Path]) -> str`
-  - Uses internal names if consistent; else longest common token prefix of humanized stems; filesystem-sanitized.
+  - Uses internal names if consistent; else longest common token prefix from minimally stripped stems; filesystem-sanitized.
+
+- `def read_weight_and_italic(path: Path) -> tuple[int | None, bool]`
+  - Read OS/2 weight and italic flag (with head fallback for italic).
 
 - `def sort_fonts(fonts: list[Path]) -> list[Path]`
-  - Applies weight/style ordering with filename as deterministic tiebreaker.
+  - Applies OS/2 weight/italic ordering with filename as deterministic tiebreaker.
 
 - `def write_collection(fonts: list[Path], out_path: Path, kind: Literal["ttc", "otc"]) -> None`
   - Opens each font with FontTools and writes a TTC/OTC. Raises `RuntimeError` on failure.
@@ -139,7 +140,7 @@ Examples:
   - `discover_fonts`: files/dirs mix, suffix filtering, stable ordering.
   - `infer_collection_type`: ttf-only → ttc; otf-only → otc; mixed → error; forced overrides.
   - `derive_collection_basename`: internal-name agreement, filename fallback, sanitization.
-  - `sort_fonts`: weight/style precedence and deterministic order.
+  - `sort_fonts`: OS/2 weight/italic precedence and deterministic order.
   - `write_collection`: mock FontTools TTFont/collection writer; assert call order and output path; error propagation.
 - No network, no real font processing: use temporary directories and mocks.
 

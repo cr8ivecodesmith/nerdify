@@ -5,7 +5,7 @@ Overview
 --------
 - Purpose: Centralize the font weight table in a repository-level TOML file so all scripts share a single source of truth and you can add or adjust weights without code changes.
 - File: `fontweights.toml` at the project root (or an explicit path in future flags/env).
-- Consumers: `weightadjust.py`, `nameadjust.py`, `createcollection.py` (and any future tools needing weight names/values or synonyms).
+- Consumers: `weightadjust.py`, `nameadjust.py` (and any future tools needing weight names/values or synonyms). `createcollection.py` no longer depends on this file.
 
 Discovery
 ---------

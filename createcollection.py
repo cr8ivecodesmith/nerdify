@@ -10,9 +10,7 @@ from typing import Callable, Iterable, Iterator, Literal, Sequence
 
 
 SUPPORTED_EXTS = {".ttf", ".otf"}
-from common.fontweights import load_config, lookup_value
-
-ITALIC_TOKENS = {"italic", "oblique"}
+ITALIC_TOKENS: set[str] = {"italic", "oblique"}
 
 
 def is_ttf(path: Path) -> bool:
@@ -136,29 +134,17 @@ def tokenize_stem(stem: str) -> list[str]:
     return toks
 
 
-def strip_style_tokens(tokens: list[str]) -> list[str]:
-    """Remove tokens that represent weight/style/version markers for base-name derivation."""
-    cfg = load_config()
+def _strip_nonfamily_tokens(tokens: list[str]) -> list[str]:
+    """Strip only obvious non-family tokens for basename inference.
+
+    Removes: italic markers, VF markers, and version-like tokens. Does not
+    attempt to strip weight/style words.
+    """
     result: list[str] = []
-    i = 0
-    while i < len(tokens):
-        t = tokens[i]
-        # combine two-word weights when present
-        two = " ".join(tokens[i : i + 2]) if i + 1 < len(tokens) else None
-        if two and lookup_value(cfg, two) is not None:
-            i += 2
-            continue
-        # drop one-word weights, italics, VF markers, and version-like tokens
-        if (
-            lookup_value(cfg, t) is not None
-            or t in ITALIC_TOKENS
-            or t in {"vf", "variable", "var"}
-            or _VERSION_TOKEN_RE.match(t) is not None
-        ):
-            i += 1
+    for t in tokens:
+        if t in ITALIC_TOKENS or t in {"vf", "variable", "var"} or _VERSION_TOKEN_RE.match(t):
             continue
         result.append(t)
-        i += 1
     return result
 
 
@@ -193,25 +179,32 @@ def sanitize_filename(name: str) -> str:
 
 
 def derive_collection_basename(fonts: Sequence[Path]) -> str:
-    """Derive a collection base filename from internal family or filenames."""
-    families: list[str] = []
-    for p in fonts:
-        fam, _ = read_family_and_subfamily(p)
-        if fam:
-            families.append(" ".join(fam.split()))  # normalize spaces
-    unique = {f for f in families if f}
-    if len(unique) == 1:
-        return next(iter(unique))
-    # Fallback to filename token prefix
-    token_lists = [strip_style_tokens(tokenize_stem(p.stem)) for p in fonts]
+    """Derive a collection base filename from a consensus Typographic Family.
+
+    If there is no single non-empty shared family, fall back to the parent directory
+    name of the first font, or its stem if parent is empty.
+    """
+    try:
+        families: list[str] = []
+        for p in fonts:
+            fam, _ = read_family_and_subfamily(p)
+            if fam:
+                families.append(" ".join(fam.split()))  # normalize spaces
+        unique = {f for f in families if f}
+        if len(unique) == 1:
+            return next(iter(unique))
+    except RuntimeError:
+        # fonttools missing or unreadable name table; fall through to fallback
+        pass
+    # Light filename heuristic: use common token prefix with only non-family
+    # tokens removed (italic/vf/version), preserving original case from first file
+    token_lists = [_strip_nonfamily_tokens(tokenize_stem(p.stem)) for p in fonts]
     prefix = common_token_prefix(token_lists)
     if prefix:
-        # Try to preserve original case by taking from first filename
-        base_tokens = []
+        base_tokens: list[str] = []
         first_tokens = re.split(r"[-_]+", fonts[0].stem)
         fi = 0
         for tok in prefix:
-            # advance until match ignoring case
             while fi < len(first_tokens) and first_tokens[fi].strip().lower() != tok:
                 fi += 1
             if fi < len(first_tokens):
@@ -220,63 +213,52 @@ def derive_collection_basename(fonts: Sequence[Path]) -> str:
             else:
                 base_tokens.append(tok)
         return sanitize_filename(" ".join(base_tokens))
-    # Last resort: parent dir or first stem
     parent = fonts[0].parent.name or fonts[0].stem
     return sanitize_filename(parent)
 
 
-def weight_and_style_from_names(
-    family: str | None, subfamily: str | None, stem: str
-) -> tuple[int | None, bool]:
-    """Infer weight numeric and italic flag from given data.
+def read_weight_and_italic(path: Path) -> tuple[int | None, bool]:
+    """Read OS/2 weight and italic flag from a font.
 
-    Returns (weight or None, is_italic).
+    Returns (weight or None, is_italic). Weight is OS/2.usWeightClass if present.
+    Italic is detected via OS/2.fsSelection bit 0, with head.macStyle bit 1 fallback.
     """
-    cfg = load_config()
-
-    def _infer_from(s: str | None) -> tuple[int | None, bool]:
-        if not s:
-            return None, False
-        s_norm = " ".join(s.lower().split())
-        is_it = any(tok in s_norm for tok in ITALIC_TOKENS)
-        # prefer direct phrase lookup
-        val = lookup_value(cfg, s_norm)
-        if val is not None:
-            return int(val), is_it
-        # attempt per-token lookup
-        toks = s_norm.split()
-        for size in (3, 2, 1):
-            for i in range(len(toks) - size + 1):
-                phrase = " ".join(toks[i : i + size])
-                val = lookup_value(cfg, phrase)
-                if val is not None:
-                    return int(val), is_it
-        return None, is_it
-
-    w, it = _infer_from(subfamily)
-    if w is not None:
-        return w, it
-    w, it2 = _infer_from(family)
-    if w is not None:
-        return w, it or it2
-    # fallback to stem tokens
-    toks = tokenize_stem(stem)
-    # combine adjacent tokens for phrase checks
-    for size in (3, 2, 1):
-        for i in range(len(toks) - size + 1):
-            phrase = " ".join(toks[i : i + size])
-            val = lookup_value(cfg, phrase)
-            if val is not None:
-                return int(val), any(t in toks for t in ITALIC_TOKENS)
-    return None, any(t in toks for t in ITALIC_TOKENS)
+    TTFont, _ = _import_fonttools_tt()
+    font = TTFont(str(path), lazy=True)
+    try:
+        weight = None
+        italic = False
+        if "OS/2" in font:
+            os2 = font["OS/2"]
+            try:
+                weight = int(getattr(os2, "usWeightClass", None)) if getattr(os2, "usWeightClass", None) is not None else None
+            except Exception:
+                weight = None
+            try:
+                fs = int(getattr(os2, "fsSelection", 0))
+                italic = bool(fs & 0x01) or italic
+            except Exception:
+                pass
+        if not italic and "head" in font:
+            try:
+                head = font["head"]
+                ms = int(getattr(head, "macStyle", 0))
+                italic = bool(ms & 0x02) or italic
+            except Exception:
+                pass
+        return weight, italic
+    finally:
+        try:
+            font.close()
+        except Exception:
+            pass
 
 
 def sort_fonts(fonts: Sequence[Path]) -> list[Path]:
-    """Sort fonts by weight (asc) then Roman before Italic; tiebreaker by name."""
+    """Sort fonts by OS/2 weight (asc) then Roman before Italic; tiebreaker by name."""
     keyed: list[tuple[int, int, str, Path]] = []
     for p in fonts:
-        fam, sub = read_family_and_subfamily(p)
-        w, it = weight_and_style_from_names(fam, sub, p.stem)
+        w, it = read_weight_and_italic(p)
         weight_key = w if w is not None else 1000
         keyed.append((weight_key, 1 if it else 0, p.name.lower(), p))
     keyed.sort(key=lambda t: (t[0], t[1], t[2]))
@@ -333,17 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 1
-    try:
-        base = args.name or derive_collection_basename(fonts)
-    except RuntimeError as e:
-        # fonttools missing while deriving names; fall back to filename strategy
-        if "fonttools" in str(e).lower():
-            token_lists = [strip_style_tokens(tokenize_stem(p.stem)) for p in fonts]
-            prefix = common_token_prefix(token_lists)
-            base = sanitize_filename(" ".join(prefix)) if prefix else sanitize_filename(fonts[0].parent.name or fonts[0].stem)
-        else:
-            print(str(e), file=sys.stderr)
-            return 2
+    base = args.name or derive_collection_basename(fonts)
     out_dir = Path(args.output)
     ext = ".ttc" if kind == "ttc" else ".otc"
     out_path = out_dir / f"{sanitize_filename(base)}{ext}"

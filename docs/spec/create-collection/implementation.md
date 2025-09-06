@@ -1,18 +1,24 @@
 Create Collection — Implementation
 =================================
 
-Integration with fontweights
-----------------------------
-- Load config with `common.fontweights.load_config()` when parsing names or tokens.
-- Replace the hardcoded `WEIGHT_MAP` with lookups via `lookup_value(cfg, phrase)`.
-- In `strip_style_tokens`, drop tokens that form recognized weight phrases (single or two-word) based on the config, as well as `Italic/Oblique` tokens.
-- In `weight_and_style_from_names`, prefer subfamily, then family, then filename tokens; use config to resolve numeric weight and detect italic tokens as before.
+Implementation focus
+--------------------
+- Do not parse names for weight/style. Adjust naming is responsible for normalization.
+- Minimal filename heuristic only for basename derivation:
+  - Tokenize stems on `-`/`_`, lowercase for matching.
+  - Drop only: italic markers, VF/Variable/Var, version‑like tokens (e.g., `0902`, `v1.2`).
+  - Compute longest common token prefix; join using original casing from the first filename, sanitize for filesystem.
+- Sorting reads OS/2 values directly:
+  - Weight: `OS/2.usWeightClass` (fallback to 1000 if missing/unreadable).
+  - Italic: `OS/2.fsSelection` bit 0; fallback to `head.macStyle` bit 1.
+- Derive the output basename:
+  - If all inputs share a single non-empty Typographic Family (name ID 16), use it as the basename.
+  - Otherwise, apply the minimal filename heuristic above; if empty, use the parent directory name of the first font, or the first stem if the parent is empty. `--name` overrides both.
 
 Error Handling
 --------------
-- If config cannot be loaded, raise `RuntimeError` and abort.
+- Errors reading name/OS/2 tables raise `RuntimeError` and abort. `--dry-run` may still function with monkeypatched readers in tests.
 
 Testing
 -------
-- Add unit tests to ensure that alias phrases (e.g., "Ultra Light") resolve to the expected numeric weight and that token stripping removes weight and italic markers using a temp `fontweights.toml`.
-
+- Unit tests should monkeypatch the OS/2/italic reader to avoid heavy IO, and validate deterministic ordering and basename derivation without any naming heuristics.

@@ -56,7 +56,7 @@ End‑to‑end example from raw fonts to a collection:
 4) Create a TTC/OTC collection
    - Command (auto type): `python createcollection.py ./out/weights -o ./out`
    - Command (forced type/name): `python createcollection.py ./out/weights --type ttc --name MyFamily -o ./out`
-   - Output: `./out/MyFamily.ttc` (or OTC for OTF inputs), with fonts ordered by weight and Roman before Italic.
+   - Output: `./out/MyFamily.ttc` (or OTC for OTF inputs), with fonts ordered by OS/2 weight (ascending) and Roman before Italic.
 
 ## CLI Reference (concise)
 
@@ -80,7 +80,7 @@ End‑to‑end example from raw fonts to a collection:
 `createcollection.py`
 - Description: Create TTC/OTC from `.ttf` or `.otf` inputs.
 - Usage: `python createcollection.py [PATHS ...] [-o OUTDIR] [--type {ttc,otc}] [--name NAME] [--dry-run]`
-- Notes: Infers type from inputs (all TTF → TTC, all OTF → OTC), or force with `--type`.
+- Notes: Infers type from inputs (all TTF → TTC, all OTF → OTC), or force with `--type`. Expects inputs to have names normalized by `nameadjust.py`; when not unanimous, uses a minimal filename-based basename heuristic.
 
 ## Development
 

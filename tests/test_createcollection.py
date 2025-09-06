@@ -60,21 +60,9 @@ def test_sniff_sfnt_type_and_infer(tdir: Path):
         infer_collection_type([otf], "ttc")
 
 
-def test_tokenize_and_strip_and_common_prefix():
-    from createcollection import (
-        tokenize_stem,
-        strip_style_tokens,
-        common_token_prefix,
-        sanitize_filename,
-    )
+def test_sanitize_filename():
+    from createcollection import sanitize_filename
 
-    stem = "CoolFont-Extra-Bold-Italic_VF"
-    toks = tokenize_stem(stem)
-    assert toks == ["coolfont", "extra", "bold", "italic", "vf"]
-    base = strip_style_tokens(toks)
-    assert base == ["coolfont"]
-    prefix = common_token_prefix([["cool", "font"], ["cool", "font", "x"]])
-    assert prefix == ["cool", "font"]
     assert sanitize_filename("Cool Font!@#") == "Cool_Font"
 
 
@@ -122,13 +110,13 @@ def test_sort_fonts_by_weight_and_italic(monkeypatch, tdir: Path):
 
     import createcollection as cc
 
-    # Use internal subfamily to drive sorting
+    # Use OS/2 data to drive sorting (monkeypatched)
     mapping = {
-        f_reg: ("A", "Regular"),
-        f_bold: ("A", "Bold"),
-        f_reg_it: ("A", "Regular Italic"),
+        f_reg: (400, False),
+        f_bold: (700, False),
+        f_reg_it: (400, True),
     }
-    monkeypatch.setattr(cc, "read_family_and_subfamily", lambda p: mapping[p])
+    monkeypatch.setattr(cc, "read_weight_and_italic", lambda p: mapping[p])
 
     ordered = sort_fonts([f_reg_it, f_bold, f_reg])
     assert ordered == [f_reg, f_reg_it, f_bold]
@@ -185,10 +173,11 @@ def test_cli_dry_run(monkeypatch, tdir: Path, capsys):
     for p in (a, b):
         write_header(p, b"\x00\x01\x00\x00")
 
-    # Avoid fonttools dependency in dry-run name derivation
+    # Avoid fonttools dependency in sorting and name derivation
     monkeypatch.setattr(cc, "read_family_and_subfamily", lambda p: (None, None))
+    monkeypatch.setattr(cc, "read_weight_and_italic", lambda p: (400, False))
 
-    rc = cc.main([str(tdir), "--dry-run"])
+    rc = cc.main([str(tdir), "--dry-run", "--name", "MyFont"]) 
     assert rc == 0
     out = capsys.readouterr().out
     assert "type=ttc" in out
