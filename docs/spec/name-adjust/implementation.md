@@ -3,7 +3,7 @@ Name Adjust Implementation Plan
 
 Overview
 --------
-- Goal: Provide a Python CLI (`nameadjust.py`) that normalizes and updates a font’s internal names (name table) based on a Humanized form of its filename, matching the Spec (`./spec.md`).
+- Goal: Provide a Python CLI (`nameadjust.py`) that normalizes and updates a font’s internal names (name table) based on a Humanized form of its filename, matching the Spec (`./spec.md`) and aligning with the Collection Naming Playbook (`../font-collection/spec-naming.md`).
 - Approach: Keep the transformation from filename → Humanized name pure and well‑tested; isolate font I/O to a small function using FontTools. Default behavior updates in place; optional `-o` writes a copy with updated internals.
 
 CLI Design
@@ -27,10 +27,13 @@ Core Flow
 1. Parse arguments and discover `.ttf` files recursively from inputs (deterministic ordering).
 2. For each font path:
    - Derive the filename stem and compute a Humanized name using the rules below.
-   - Split the Humanized name into Family/Subfamily (best‑effort heuristics).
-   - Open the font with FontTools and update name records:
-     - Family (nameID 1), Subfamily (nameID 2), Full name (nameID 4), PostScript name (nameID 6).
-     - Write both Windows (3,1,0x409) and Mac (1,0,0) platform records.
+   - Split the Humanized name into Family/Subfamily (best‑effort heuristics) and infer weight (100–900) and italic flag.
+   - Open the font with FontTools and update name records and flags:
+     - Typographic Family (nameID 16), Typographic Subfamily (nameID 17)
+     - Legacy Family (nameID 1), Legacy Subfamily (nameID 2)
+     - Full name (nameID 4) and PostScript name (nameID 6)
+     - Write Windows (3,1,0x409) and optionally Mac (1,0,0) platform records.
+     - Set OS/2.usWeightClass; set OS/2.fsSelection bits (Italic/Bold/Regular) and head.macStyle bits (Bold/Italic) consistently.
    - Determine a cleaned output filename based on the computed Family/Subfamily:
      - Build `<Family>-<Subfamily>` as the stem, then replace spaces with underscores; retain the hyphen between Family and Subfamily.
    - Save in place (renaming the file to the cleaned stem when necessary), or to `OUTDIR/<cleaned-filename>` when `-o` is provided.
@@ -52,13 +55,20 @@ Family/Subfamily Heuristics
 - If the trailing tokens form a recognized style phrase, assign that phrase to Subfamily and the preceding tokens to Family.
 - Otherwise, set Family to the entire Humanized string and Subfamily to `Regular`.
 
-Name Table Updates
-------------------
-- Family (ID 1): set to computed Family.
-- Subfamily (ID 2): set to computed Subfamily (default `Regular`).
-- Full (ID 4): `<Family> <Subfamily>` (strip extra spaces).
-- PostScript (ID 6): `<Family>-<Subfamily>` with spaces removed in each part and only allowed characters `[A-Za-z0-9-]` (strip/replace others). Ensure non‑empty and <= 63 chars when possible.
-- Platforms: write Windows (3,1,0x409) and Mac (1,0,0) variants for all above IDs.
+Name & Flag Updates
+-------------------
+- Name table:
+  - Typographic Family (ID 16): set to computed Family.
+  - Typographic Subfamily (ID 17): set to computed Subfamily.
+  - Legacy Family (ID 1): set to computed Family.
+  - Legacy Subfamily (ID 2): set to computed Subfamily (default `Regular`).
+  - Full (ID 4): `<Family> <Subfamily>` (strip extra spaces).
+  - PostScript (ID 6): `<Family>-<Subfamily>` with spaces removed in each part and only allowed characters `[A-Za-z0-9-]` (strip/replace others). Ensure non‑empty and <= 63 chars when possible.
+  - Platforms: write Windows (3,1,0x409) and Mac (1,0,0) variants.
+- Style flags:
+  - OS/2.usWeightClass: map style phrase to 100–900 (Thin→Black).
+  - OS/2.fsSelection bits: 0=ITALIC set for italic styles; 5=BOLD set only for “Bold”; 6=REGULAR set only on upright “Regular”.
+  - head.macStyle bits: 0=Bold set when bold; 1=Italic set when italic.
 
 Filename Normalization
 ----------------------
@@ -85,14 +95,17 @@ Functions & Types
 - `def split_family_subfamily(humanized: str) -> tuple[str, str]`:
   - Returns `(family, subfamily)` using the heuristics above.
 
+- `def infer_weight_and_italic(subfamily: str) -> tuple[int, bool]`:
+  - Map the subfamily phrase to `(usWeightClass, italic_flag)`, where italic flag is true if `"Italic"` present; weight maps per canonical keywords.
+
 - `def ps_name(family: str, subfamily: str) -> str`:
   - Returns PostScript name: `<Family>-<Subfamily>` with spaces removed and characters normalized to `[A-Za-z0-9-]`.
 
-- `def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subfamily: str) -> Path`:
-  - Opens the font, updates IDs 1/2/4/6 for Windows/Mac, saves in place or to `out_path`; returns the written path.
+- `def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subfamily: str, weight: int, italic: bool) -> Path`:
+  - Opens the font, updates IDs 16/17/1/2/4/6 (Windows/Mac), sets OS/2 and head flags, saves in place or to `out_path`; returns the written path.
 
 - `def process_font(path: Path, out_dir: Path | None) -> Path`:
-  - Orchestrates: compute Humanized, split family/subfamily, call `rewrite_name_table`, return written path.
+  - Orchestrates: compute Humanized, split family/subfamily, infer `(weight, italic)`, call `rewrite_name_table`, return written path.
 
 - `def main(argv: list[str] | None = None) -> int`:
   - Parse args, discover fonts, run sequentially, print summary.
@@ -103,7 +116,7 @@ Implementation Notes
 - Token filtering: drop tokens that are exactly `VF` case‑insensitively; consider extending to `VAR`/`Variable` if needed.
 - Version detection: treat tokens as versions when they match `^(?:v)?\d+(?:[._]\d+)*$`.
 - Style phrase detection: normalize spaces and dashes, then match against a small set of known phrases; support two‑word combos like `Extra Bold`, `Semi Bold`, and `Bold Italic`.
-- PostScript constraints: strip characters outside `[A-Za-z0-9-]`; collapse repeated hyphens; trim edges.
+- PostScript constraints: strip characters outside `[A-Za-z0-9-]`; collapse repeated hyphens; trim edges. Ensure ASCII.
 - In‑place vs copy: when `-o` is provided, open the original and write a cleaned copy to `<OUTDIR>/<cleaned-filename>`.
 - Determinism: process fonts in sorted order; print consistent OK/FAIL lines.
 
@@ -121,7 +134,7 @@ Testing Plan
   - `split_family_subfamily`: trailing style recognition, default Regular, multi‑word styles.
   - `ps_name`: character filtering and formatting.
   - `discover_ttf`: mix of files/dirs, case‑insensitive suffix, determinism.
-  - End‑to‑end (light): create a minimal TTFont programmatically with a name table, write to temp `.ttf`, run `rewrite_name_table`, and assert IDs 1/2/4/6 for both platforms.
+  - End‑to‑end (light): create a minimal TTFont programmatically with a name table, write to temp `.ttf`, run `rewrite_name_table`, and assert IDs 16/17/1/2/4/6 and fsSelection/macStyle bits are set as expected.
 
 Usage Examples
 --------------

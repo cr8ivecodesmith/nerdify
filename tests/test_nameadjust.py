@@ -104,9 +104,9 @@ def test_rewrite_name_table_monkeypatched(tmp_path: Path, monkeypatch: pytest.Mo
     # Writes in place when out_path is None
     assert out == font
     assert font.exists()
-    # Validate that names were written for Mac and Windows platforms for IDs 1,2,4,6
+    # Validate that names were written for Mac and Windows platforms for IDs 16,17,1,2,4,6
     ids = sorted(set(c[0] for c in calls))
-    assert ids == [1, 2, 4, 6]
+    assert ids == [1, 2, 4, 6, 16, 17]
 
 
 def test_process_font_inplace_and_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -163,8 +163,47 @@ def make_clean_stem(family: str, subfamily: str) -> str:
     return f"{fam}-{sub}" if sub else fam
 
 
+def _infer_weight_and_italic_from_subfamily(subfamily: str) -> tuple[int, bool]:
+    """Infer usWeightClass (100-900) and italic flag from subfamily phrase.
+
+    - Strictly treat 'Bold' for bold; do not infer bold from 'Medium' etc.
+    - Italic true when 'Italic' appears in the phrase.
+    """
+    is_italic = "italic" in subfamily.lower()
+    # Weight map aligned with collection tool
+    weight_map = {
+        "thin": 100,
+        "hairline": 100,
+        "extra light": 200,
+        "extralight": 200,
+        "ultra light": 200,
+        "ultralight": 200,
+        "light": 300,
+        "regular": 400,
+        "book": 400,
+        "roman": 400,
+        "medium": 500,
+        "semi bold": 600,
+        "semibold": 600,
+        "demi bold": 600,
+        "demibold": 600,
+        "bold": 700,
+        "extra bold": 800,
+        "extrabold": 800,
+        "ultra bold": 800,
+        "ultrabold": 800,
+        "black": 900,
+        "heavy": 900,
+    }
+    s = " ".join(subfamily.lower().split())
+    for k in sorted(weight_map.keys(), key=len, reverse=True):
+        if k in s:
+            return weight_map[k], is_italic
+    return 400, is_italic
+
+
 def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subfamily: str) -> Path:
-    """Rewrite name table IDs 1/2/4/6 for Windows and Mac platforms.
+    """Rewrite name table IDs 16/17/1/2/4/6 for Windows and Mac; update style flags.
 
     Returns the written path (in place when out_path is None).
     """
@@ -173,18 +212,55 @@ def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subf
         name_tbl = font["name"]
         full = f"{family} {subfamily}".strip()
         ps = ps_name(family, subfamily)
+        weight, italic = _infer_weight_and_italic_from_subfamily(subfamily or "Regular")
 
         # Windows (3,1,0x409)
+        name_tbl.setName(family, 16, 3, 1, 0x409)
+        name_tbl.setName(subfamily, 17, 3, 1, 0x409)
         name_tbl.setName(family, 1, 3, 1, 0x409)
         name_tbl.setName(subfamily, 2, 3, 1, 0x409)
         name_tbl.setName(full, 4, 3, 1, 0x409)
         name_tbl.setName(ps, 6, 3, 1, 0x409)
 
         # Mac (1,0,0)
+        name_tbl.setName(family, 16, 1, 0, 0)
+        name_tbl.setName(subfamily, 17, 1, 0, 0)
         name_tbl.setName(family, 1, 1, 0, 0)
         name_tbl.setName(subfamily, 2, 1, 0, 0)
         name_tbl.setName(full, 4, 1, 0, 0)
         name_tbl.setName(ps, 6, 1, 0, 0)
+
+        # Update OS/2 and head flags when available
+        try:
+            os2 = font["OS/2"]
+            os2.usWeightClass = int(weight)
+            # fsSelection bits: 0=ITALIC, 5=BOLD, 6=REGULAR
+            fs = getattr(os2, "fsSelection", 0)
+            def _set_bit(val: int, bit: int, on: bool) -> int:
+                return (val | (1 << bit)) if on else (val & ~(1 << bit))
+
+            is_bold_style = " bold" in (" " + subfamily.lower()) and "extra bold" not in subfamily.lower()
+            is_regular_upright = (subfamily.lower() == "regular") and not italic
+            fs = _set_bit(fs, 0, italic)
+            fs = _set_bit(fs, 5, is_bold_style)
+            fs = _set_bit(fs, 6, is_regular_upright)
+            os2.fsSelection = fs
+        except Exception:
+            pass
+
+        try:
+            head = font["head"]
+            mac = getattr(head, "macStyle", 0)
+            # macStyle bits: 0=Bold, 1=Italic
+            def _set_bit(val: int, bit: int, on: bool) -> int:
+                return (val | (1 << bit)) if on else (val & ~(1 << bit))
+
+            is_bold_style = " bold" in (" " + subfamily.lower()) and "extra bold" not in subfamily.lower()
+            mac = _set_bit(mac, 0, is_bold_style)
+            mac = _set_bit(mac, 1, italic)
+            head.macStyle = mac
+        except Exception:
+            pass
 
         target = Path(out_path) if out_path is not None else Path(ttf_in)
         font.save(target)

@@ -3,7 +3,7 @@ Font Collection Creator
 
 ## Description
 
-A CLI tool (`createcollection.py`) that builds a TrueType Collection (TTC) or OpenType Collection (OTC) from a given set of compatible fonts. It expects inputs that have already had their internal names normalized (e.g., via `nameadjust.py`), but does not enforce or verify that step.
+A CLI tool (`createcollection.py`) that builds a TrueType Collection (TTC) or OpenType Collection (OTC) from a given set of compatible fonts. It expects inputs that have already had their internal names normalized (e.g., via `nameadjust.py`) in line with the Collection Naming Playbook (`docs/spec/font-collection/spec-naming.md`), but does not enforce or verify that step.
 
 ## Usage
 
@@ -19,8 +19,9 @@ createcollection.py [font files or dirs ...] [-o OUTDIR] [--type {ttc,otc}] [--n
   - Sort by recognized weight (100–900 Thin→Black), then Roman before Italic.
   - When weight/style cannot be determined from internal names, fall back to filename heuristics.
 - Names the output collection file based on internal names when possible, with a clear fallback:
-  - Preferred: use the common Family name (nameID 1) shared by all fonts: `<Family>.ttc|.otc`.
-  - If internal families differ or are missing, compute a base name from filename stems by removing trailing weight/style tokens and taking the longest common non-empty prefix of tokens: `<BaseName>.ttc|.otc`.
+  - Preferred: use the common Typographic Family (nameID 16) shared by all fonts: `<Family>.ttc|.otc`.
+  - If nameID 16 is missing or inconsistent, fall back to a common Legacy Family (nameID 1) when consistent.
+  - If internal families still differ or are missing, compute a base name from filename stems by removing trailing weight/style tokens and taking the longest common non-empty prefix of tokens: `<BaseName>.ttc|.otc`.
   - Normalize the final filename to safe characters (A–Z, a–z, 0–9, dash, underscore, dot); convert spaces to underscores, retain dashes, and collapse repeats.
   - Allow explicit override via `--name NAME` (filename becomes `NAME.ttc|.otc`).
 - Validates compatibility constraints to avoid creating invalid collections:
@@ -45,7 +46,8 @@ createcollection.py [font files or dirs ...] [-o OUTDIR] [--type {ttc,otc}] [--n
 ## Naming Rules (Details)
 
 1) Internal-name path (preferred):
-   - Read Family (nameID 1) of each font. If all share the same normalized family string, use it.
+   - Read Typographic Family (nameID 16) of each font. If all share the same normalized family string, use it.
+   - Fallback: if 16 is unavailable or inconsistent, read Legacy Family (nameID 1) and use it when consistent.
    - Normalization: strip extra whitespace; map multiple spaces to one; keep original case; do not inject style tokens.
 
 2) Filename path (fallback):
@@ -56,13 +58,17 @@ createcollection.py [font files or dirs ...] [-o OUTDIR] [--type {ttc,otc}] [--n
    - Replace spaces with `_`, remove characters outside `[A-Za-z0-9._-]`, collapse repeated `_` and `-`, trim leading/trailing separators.
 
 Examples:
-- Fonts with Family `Cool Font`: `Cool_Font.ttc` or `Cool_Font.otc`.
+- Fonts with Typographic Family (ID 16) `Cool Font`: `Cool_Font.ttc` or `Cool_Font.otc`.
+- If ID 16 is missing but Legacy Family (ID 1) matches `Cool Font`, use `Cool_Font`.
 - Mixed families or missing internals, filenames like `CoolFont-Regular.ttf`, `CoolFont-Bold.ttf`: `CoolFont.ttc`.
 
 ## Sorting Heuristic
 
 - Use the following weight order when determinable: 100 Thin, 200 Extra Light, 300 Light, 400 Regular, 500 Medium, 600 Semi Bold, 700 Bold, 800 Extra Bold, 900 Black.
 - Roman precedes Italic for the same weight.
+- Source of truth for style/italic and weight:
+  - Prefer Typographic Subfamily (nameID 17); fallback to Legacy Subfamily (nameID 2); finally filename tokens.
+  - Treat “Bold” strictly for bold-only styles (do not infer bold from Medium/600).
 - If no internal name-based weight is detected, infer from filename tokens; otherwise, leave relative order but maintain deterministic sort by filename as a final tiebreaker.
 
 ## Constraints & Scope
@@ -102,10 +108,10 @@ Examples:
   - From `forced` or uniform input types; raise on mixed inputs.
 
 - `def read_family_and_style(path: Path) -> tuple[str | None, str | None]`
-  - Returns `(family, subfamily)` from the name table when available.
+  - Returns `(family, subfamily)` from the name table, preferring Typographic IDs (16/17) with Legacy IDs (1/2) fallback.
 
 - `def humanize_stem(stem: str) -> list[str]`
-  - Tokenizes and removes style/weight tokens; returns remaining tokens for naming.
+  - Tokenizes and removes style/weight tokens (aligned with the playbook); returns remaining tokens for naming.
 
 - `def derive_collection_basename(fonts: list[Path]) -> str`
   - Uses internal names if consistent; else longest common token prefix of humanized stems; filesystem-sanitized.
@@ -149,5 +155,5 @@ Examples:
 
 ## Notes
 
-- This tool assumes (but does not require) that inputs have been run through `nameadjust.py` so internal names are clean and consistent.
+- This tool assumes (but does not require) that inputs have been run through `nameadjust.py` so internal names are clean and consistent per `spec-naming.md` (IDs 16/17/1/2/4/6 aligned; style flags consistent).
 - The collection file’s name is a filesystem artifact; the TTC/OTC container itself does not carry a single unified display name; individual fonts retain their internal names.

@@ -3,7 +3,7 @@ Font Collection Creator — Implementation Plan
 
 Overview
 --------
-- Goal: Implement `createcollection.py`, a Python CLI that creates a TTC/OTC from a set of fonts, following the Spec (`./spec.md`).
+- Goal: Implement `createcollection.py`, a Python CLI that creates a TTC/OTC from a set of fonts, following the Spec (`./spec.md`) and aligning naming with the Collection Naming Playbook (`./spec-naming.md`).
 - Approach: Keep discovery, naming, and sorting pure and testable; isolate FontTools I/O and writing to one place. Prefer explicit validation and clear, actionable errors.
 
 CLI Design
@@ -45,7 +45,7 @@ Core Functions
   - If `forced` given, return it after validating all inputs match (`ttf` for `ttc`, `otf` for `otc`). Else infer from uniform `sniff_sfnt_type` over inputs; raise on mixed.
 
 - `def read_family_and_subfamily(path: Path) -> tuple[str | None, str | None]`
-  - Lazy-import `TTFont`; open with `lazy=True`; read nameIDs 1 (Family) and 2 (Subfamily) preferring Windows (3,1,0x409) then Mac (1,0,0). Normalize whitespace; return `None` if unavailable.
+  - Lazy-import `TTFont`; open with `lazy=True`; prefer Typographic IDs 16 (Family) and 17 (Subfamily); fallback to Legacy IDs 1/2. Prefer Windows (3,1,0x409) then Mac (1,0,0). Normalize whitespace; return `None` if unavailable.
 
 - `def tokenize_stem(stem: str) -> list[str]`
   - Split on `-` and `_`, collapse empties; lowercase tokens; keep alnum and words.
@@ -60,10 +60,10 @@ Core Functions
   - Replace spaces with `-`, drop chars outside `[A-Za-z0-9._-]`, collapse `-`, trim edges.
 
 - `def derive_collection_basename(fonts: Sequence[Path]) -> str`
-  - Attempt internal Family consensus: collect families; if a single non-empty normalized family exists, use it. Else, use filename path: humanize stems via `tokenize_stem` → `strip_style_tokens`, compute `common_token_prefix`; if empty, fallback to parent directory name of first font (or stem of first font). Sanitize final.
+  - Attempt internal Family consensus: collect Typographic Families (ID 16); if a single non-empty normalized family exists, use it. Else fall back to Legacy Family (ID 1) consensus. Else, use filename path: humanize stems via `tokenize_stem` → `strip_style_tokens`, compute `common_token_prefix`; if empty, fallback to parent directory name of first font (or stem of first font). Sanitize final.
 
 - `def weight_and_style_from_names(family: str | None, subfamily: str | None, stem: str) -> tuple[int | None, bool]`
-  - Determine weight (numeric) and italic flag from subfamily first; fallback to family/stem tokens using `WEIGHT_MAP` and `ITALIC_TOKENS`.
+  - Determine weight (numeric) and italic flag from Typographic Subfamily (ID 17) when available; fallback to Legacy Subfamily (ID 2) and then family/stem tokens using `WEIGHT_MAP` and `ITALIC_TOKENS`. Treat Bold strictly (don’t infer from Medium/600).
 
 - `def sort_fonts(fonts: Sequence[Path]) -> list[Path]`
   - Build tuples `(weight or 1000, italic as int (0 for roman, 1 for italic), normalized_stem)` and sort.
@@ -79,7 +79,7 @@ Core Functions
 
 Implementation Notes
 --------------------
-- Purity & testability: keep discovery, naming, tokenization, sorting pure. Hide FontTools behind `read_family_and_subfamily` and `write_collection` for easy mocking.
+- Purity & testability: keep discovery, naming, tokenization, sorting pure. Hide FontTools behind `read_family_and_subfamily` and `write_collection` for easy mocking. Ensure name reads prefer IDs 16/17 with 1/2 fallback.
 - Performance: use `lazy=True` when opening TTFont to avoid parsing entire tables. Collection writing remains I/O bound; inputs typically small N.
 - Determinism: sort inputs deterministically before any processing; use consistent tokenization and normalization.
 - Formatting: retain original Family case when used as filename base; only sanitize for filesystem safety.

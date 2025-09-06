@@ -121,7 +121,7 @@ def _import_fonttools_tt():
 
 
 def read_family_and_subfamily(path: Path) -> tuple[str | None, str | None]:
-    """Read name table Family (ID 1) and Subfamily (ID 2), if available.
+    """Read Typographic Family/Subfamily (IDs 16/17) with Legacy (1/2) fallback.
 
     Returns (family, subfamily) or (None, None) if not found.
     """
@@ -141,8 +141,8 @@ def read_family_and_subfamily(path: Path) -> tuple[str | None, str | None]:
                         continue
             return None
 
-        family = _get(1)
-        subfam = _get(2)
+        family = _get(16) or _get(1)
+        subfam = _get(17) or _get(2)
     finally:
         try:
             font.close()
@@ -261,10 +261,10 @@ def weight_and_style_from_names(
             return None, False
         s_norm = " ".join(s.lower().split())
         is_it = any(tok in s_norm for tok in ITALIC_TOKENS)
-        # Check two-word then one-word weights
-        for k, v in WEIGHT_MAP.items():
+        # Prefer longer matches first to avoid matching 'bold' inside 'extra bold'
+        for k in sorted(WEIGHT_MAP.keys(), key=len, reverse=True):
             if k in s_norm:
-                return v, is_it
+                return WEIGHT_MAP[k], is_it
         return None, is_it
 
     w, it = _infer_from(subfamily)
@@ -277,7 +277,8 @@ def weight_and_style_from_names(
     toks = tokenize_stem(stem)
     # combine adjacent tokens
     pairs = [" ".join(toks[i : i + 2]) for i in range(len(toks) - 1)]
-    for k, v in WEIGHT_MAP.items():
+    for k in sorted(WEIGHT_MAP.keys(), key=len, reverse=True):
+        v = WEIGHT_MAP[k]
         if k in toks or k in pairs:
             return v, any(t in toks for t in ITALIC_TOKENS)
     return None, any(t in toks for t in ITALIC_TOKENS)

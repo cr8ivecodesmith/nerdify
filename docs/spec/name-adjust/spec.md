@@ -3,9 +3,9 @@ Name Adjust
 
 ## Description
 
-A font name normalization tool that updates a TTF’s internal Full Name (and related name table records) based on a humanized form of its filename. Tokens are split on underscores and hyphens, converted to Title Case where appropriate, and common technical suffixes (e.g., "VF") are removed. Example:
+A font name normalization tool that rewrites a font’s name table to align with the Collection Naming Playbook (`docs/spec/font-collection/spec-naming.md`). It derives a Humanized form of the filename and sets the key name IDs and style flags so apps group and link styles correctly. Example:
 
-- PragmataProMonoVF_liga_0902-Extra-bold-NerdFont → PragmataProMono Liga 0902 Extra Bold NerdFont
+- PragmataProMonoVF_liga_0902-Extra-bold-NerdFont → PragmataProMono Liga Extra Bold NerdFont
 
 ## Usage
 
@@ -17,13 +17,22 @@ Essentially this script automates the following steps:
 
 - Requires fonttools; if missing, instruct the user to install it (see: requirements.txt).
 - Discovers `.ttf` files from provided files/dirs (recursive) and processes them deterministically.
-- For each font file, computes a Humanized name from the filename stem and writes it into the font’s name table:
-  - Full Name (nameID 4): set to the Humanized name.
-  - PostScript Name (nameID 6): Humanized name with spaces removed and a hyphen between family and style when derivable.
-  - Family (nameID 1) and Subfamily (nameID 2): best‑effort split where style/weight tokens are present; otherwise Subfamily defaults to Regular.
+- For each font file, computes a Humanized name from the filename stem, splits it into Family and Subfamily, and updates name/flag fields:
+  - Name table:
+    - Typographic Family (nameID 16) = Family
+    - Typographic Subfamily (nameID 17) = Subfamily
+    - Legacy Family (nameID 1) = Family
+    - Legacy Subfamily (nameID 2) = Subfamily (default `Regular` when no style tokens)
+    - Full Name (nameID 4) = `Family Subfamily`
+    - PostScript Name (nameID 6) = `Family-Subfamily` ASCII, spaces removed
+    - Provide Windows/Unicode (3,1,0x409) records at minimum; may also write Mac (1,0,0)
+  - Style flags and metrics:
+    - OS/2.usWeightClass = 100–900 per Subfamily (Thin→Black)
+    - OS/2.fsSelection bits: set ITALIC for italic styles; set BOLD only for “Bold”; set REGULAR only on upright Regular
+    - head.macStyle bits: set Bold/Italic to match
 - Output location:
   - By default, updates the font file in place.
-  - If `-o` is provided, writes a copy to the output directory using the original filename, but with updated internal names.
+  - If `-o` is provided, writes a copy to the output directory using the cleaned filename derived from `Family-Subfamily`.
 
 ## Humanization Rules
 
@@ -37,14 +46,15 @@ Essentially this script automates the following steps:
 
 Heuristics for family vs subfamily (style):
 
-- If the last one or two tokens are recognized style/weight words (e.g., Regular, Bold, Extra Bold, Italic), assign them to Subfamily and the preceding tokens to Family.
-- Otherwise, Family is the entire Humanized name and Subfamily defaults to Regular.
+- Recognize typical weight/style phrases: `Thin`, `Extra Light`, `Light`, `Regular`, `Medium`, `Semi Bold`, `Bold`, `Extra Bold`, `Black`, and italic variants (e.g., `Italic`, `Bold Italic`).
+- If the trailing tokens form a recognized style phrase, assign them to Subfamily and the preceding tokens to Family.
+- Otherwise, Family is the entire Humanized name and Subfamily defaults to `Regular`.
 
 ## Examples
 
 - Input filename: `PragmataProMonoVF_liga_0902-Extra-bold-NerdFont.ttf`
-  - Humanized: `PragmataProMono Liga 0902 Extra Bold NerdFont`
-  - Family/Subfamily (best‑effort): Family=`PragmataProMono Liga 0902 NerdFont`, Subfamily=`Extra Bold`
+  - Humanized: `PragmataProMono Liga Extra Bold NerdFont` (drops version token `0902`)
+  - Family/Subfamily (best‑effort): Family=`PragmataProMono Liga NerdFont`, Subfamily=`Extra Bold`
 
 - Input filename: `CoolFont-regular.ttf`
   - Humanized: `CoolFont Regular`
@@ -57,6 +67,12 @@ Heuristics for family vs subfamily (style):
 ## Notes
 
 - Only `.ttf` files are supported.
-- The script does not rename files; it updates internal font names. When `-o` is used, the filename is preserved and a copy is written to the output directory.
+- When `-o` is used, a cleaned filename is used for the copy: `<Family>-<Subfamily>.ttf` with spaces replaced by underscores.
 - The humanization is heuristic-based and intentionally conservative to avoid breaking CamelCase branding.
 
+Alignment with Playbook
+-----------------------
+- Mirrors the recommendations in `spec-naming.md`:
+  - IDs 16/17/1/2/4/6 aligned and unique per face
+  - Weight/italic flags consistent across OS/2.fsSelection and head.macStyle
+  - Strict Bold detection (do not infer from Medium/600)
