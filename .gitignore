@@ -1,0 +1,17 @@
+*.py[cod]
+__pycache__
+
+*.pkl
+.env
+.ropeproject
+
+.python-version
+
+.coverage*
+.pytest_cache
+
+FontPatcher/
+fonts/
+*.zip
+*.ttf
+*.otf
