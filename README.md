@@ -74,6 +74,8 @@ End‑to‑end example from raw fonts to a collection:
 - Description: Produce standard weights from variable TTFs; optional numeric offset.
 - Usage: `python weightadjust.py [PATHS ...] [-w OFFSET] [-o OUTDIR]`
 - Notes: `.ttf` only; clamps to the font’s supported `wght` range; rewrites internal names in outputs.
+  - Output names: `<stem>-<WeightName>.ttf`; with offset: `<stem>-<WeightName>-<Resolved>.ttf`.
+  - Weights table comes from `fontweights.toml` (see `docs/spec/fontweights/spec.md`).
 
 `createcollection.py`
 - Description: Create TTC/OTC from `.ttf` or `.otf` inputs.
@@ -92,4 +94,3 @@ End‑to‑end example from raw fonts to a collection:
 - Commands write only to the specified `-o/--output` directories (or in place where documented).
 - Network access is only used by `nerdify.py` to fetch `FontPatcher.zip` unless `--fontpatcher-dir` is provided.
 - Filenames and internal names are sanitized conservatively for cross‑platform safety.
-
