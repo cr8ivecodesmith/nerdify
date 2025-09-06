@@ -10,32 +10,7 @@ from typing import Callable, Iterable, Iterator, Literal, Sequence
 
 
 SUPPORTED_EXTS = {".ttf", ".otf"}
-
-# Canonical weight mapping and synonyms
-WEIGHT_MAP: dict[str, int] = {
-    "thin": 100,
-    "hairline": 100,
-    "extra light": 200,
-    "extralight": 200,
-    "ultra light": 200,
-    "ultralight": 200,
-    "light": 300,
-    "regular": 400,
-    "book": 400,
-    "roman": 400,
-    "medium": 500,
-    "semi bold": 600,
-    "semibold": 600,
-    "demi bold": 600,
-    "demibold": 600,
-    "bold": 700,
-    "extra bold": 800,
-    "extrabold": 800,
-    "ultra bold": 800,
-    "ultrabold": 800,
-    "black": 900,
-    "heavy": 900,
-}
+from common.fontweights import load_config, lookup_value
 
 ITALIC_TOKENS = {"italic", "oblique"}
 
@@ -163,18 +138,19 @@ def tokenize_stem(stem: str) -> list[str]:
 
 def strip_style_tokens(tokens: list[str]) -> list[str]:
     """Remove tokens that represent weight/style/version markers for base-name derivation."""
+    cfg = load_config()
     result: list[str] = []
     i = 0
     while i < len(tokens):
         t = tokens[i]
         # combine two-word weights when present
         two = " ".join(tokens[i : i + 2]) if i + 1 < len(tokens) else None
-        if two and two in WEIGHT_MAP:
+        if two and lookup_value(cfg, two) is not None:
             i += 2
             continue
         # drop one-word weights, italics, VF markers, and version-like tokens
         if (
-            t in WEIGHT_MAP
+            lookup_value(cfg, t) is not None
             or t in ITALIC_TOKENS
             or t in {"vf", "variable", "var"}
             or _VERSION_TOKEN_RE.match(t) is not None
@@ -256,15 +232,25 @@ def weight_and_style_from_names(
 
     Returns (weight or None, is_italic).
     """
+    cfg = load_config()
+
     def _infer_from(s: str | None) -> tuple[int | None, bool]:
         if not s:
             return None, False
         s_norm = " ".join(s.lower().split())
         is_it = any(tok in s_norm for tok in ITALIC_TOKENS)
-        # Prefer longer matches first to avoid matching 'bold' inside 'extra bold'
-        for k in sorted(WEIGHT_MAP.keys(), key=len, reverse=True):
-            if k in s_norm:
-                return WEIGHT_MAP[k], is_it
+        # prefer direct phrase lookup
+        val = lookup_value(cfg, s_norm)
+        if val is not None:
+            return int(val), is_it
+        # attempt per-token lookup
+        toks = s_norm.split()
+        for size in (3, 2, 1):
+            for i in range(len(toks) - size + 1):
+                phrase = " ".join(toks[i : i + size])
+                val = lookup_value(cfg, phrase)
+                if val is not None:
+                    return int(val), is_it
         return None, is_it
 
     w, it = _infer_from(subfamily)
@@ -275,12 +261,13 @@ def weight_and_style_from_names(
         return w, it or it2
     # fallback to stem tokens
     toks = tokenize_stem(stem)
-    # combine adjacent tokens
-    pairs = [" ".join(toks[i : i + 2]) for i in range(len(toks) - 1)]
-    for k in sorted(WEIGHT_MAP.keys(), key=len, reverse=True):
-        v = WEIGHT_MAP[k]
-        if k in toks or k in pairs:
-            return v, any(t in toks for t in ITALIC_TOKENS)
+    # combine adjacent tokens for phrase checks
+    for size in (3, 2, 1):
+        for i in range(len(toks) - size + 1):
+            phrase = " ".join(toks[i : i + size])
+            val = lookup_value(cfg, phrase)
+            if val is not None:
+                return int(val), any(t in toks for t in ITALIC_TOKENS)
     return None, any(t in toks for t in ITALIC_TOKENS)
 
 

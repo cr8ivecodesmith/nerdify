@@ -10,6 +10,7 @@ import shutil
 import sys
 
 from fontTools.ttLib import TTFont  # type: ignore
+from common.fontweights import load_config, lookup_value
 
 
 def is_ttf(path: Path) -> bool:
@@ -84,24 +85,20 @@ def humanize_stem(stem: str) -> str:
     return " ".join(out).strip()
 
 
-# Recognized style phrases
-_BASE_STYLES = [
-    "Thin",
-    "Extra Light",
-    "Light",
-    "Regular",
-    "Medium",
-    "Semi Bold",
-    "Bold",
-    "Extra Bold",
-    "Black",
-]
-_STYLE_SET = set(_BASE_STYLES)
-# Add italic combinations
-for base in _BASE_STYLES:
-    if base != "Italic":
-        _STYLE_SET.add(f"{base} Italic")
-_STYLE_SET.add("Italic")
+def _style_phrases() -> set[str]:
+    """Return recognized base style phrases from fontweights config.
+
+    Includes canonical names and aliases with hyphens converted to spaces, Title Cased.
+    Also includes the standalone "Italic" modifier token.
+    """
+    cfg = load_config()
+    phrases: set[str] = set()
+    for canon in cfg.canonical_to_value.keys():
+        phrases.add(" ".join(canon.replace("-", " ").split()).title())
+    for norm in cfg.normalized_to_canonical.keys():
+        phrases.add(" ".join(norm.split()).title())
+    phrases.add("Italic")
+    return phrases
 
 
 def split_family_subfamily(humanized: str) -> tuple[str, str]:
@@ -122,6 +119,8 @@ def split_family_subfamily(humanized: str) -> tuple[str, str]:
     has_italic = any(t.lower() == "italic" for t in toks)
     toks_wo_italic = [t for t in toks if t.lower() != "italic"]
 
+    # Build base style phrases from config and find rightmost match
+    base_styles = _style_phrases() - {"Italic"}
     # Find rightmost base style phrase (without Italic) in the remaining tokens
     found: tuple[int, int] | None = None  # (start, end) inclusive in toks_wo_italic
     n = len(toks_wo_italic)
@@ -131,7 +130,7 @@ def split_family_subfamily(humanized: str) -> tuple[str, str]:
             if start < 0:
                 continue
             phrase = " ".join(toks_wo_italic[start : i + 1])
-            if phrase in _BASE_STYLES:
+            if phrase in base_styles:
                 found = (start, i)
                 break
         if found:
@@ -175,43 +174,23 @@ def make_clean_stem(family: str, subfamily: str) -> str:
     return f"{fam}-{sub}" if sub else fam
 
 
-def _infer_weight_and_italic_from_subfamily(subfamily: str) -> tuple[int, bool]:
+def _infer_weight_and_italic_from_subfamily(subfamily: str) -> tuple[int | None, bool]:
     """Infer usWeightClass (100-900) and italic flag from subfamily phrase.
 
     - Strictly treat 'Bold' for bold; do not infer bold from 'Medium' etc.
     - Italic true when 'Italic' appears in the phrase.
     """
     is_italic = "italic" in subfamily.lower()
-    # Weight map aligned with collection tool
-    weight_map = {
-        "thin": 100,
-        "hairline": 100,
-        "extra light": 200,
-        "extralight": 200,
-        "ultra light": 200,
-        "ultralight": 200,
-        "light": 300,
-        "regular": 400,
-        "book": 400,
-        "roman": 400,
-        "medium": 500,
-        "semi bold": 600,
-        "semibold": 600,
-        "demi bold": 600,
-        "demibold": 600,
-        "bold": 700,
-        "extra bold": 800,
-        "extrabold": 800,
-        "ultra bold": 800,
-        "ultrabold": 800,
-        "black": 900,
-        "heavy": 900,
-    }
-    s = " ".join(subfamily.lower().split())
-    for k in sorted(weight_map.keys(), key=len, reverse=True):
-        if k in s:
-            return weight_map[k], is_italic
-    return 400, is_italic
+    # Strip italic and lookup weight via config
+    s = " ".join(t for t in subfamily.split() if t.lower() != "italic")
+    cfg = load_config()
+    val = lookup_value(cfg, s)
+    if val is not None:
+        return int(val), is_italic
+    # Fall back to 400 only if Regular is defined
+    if lookup_value(cfg, "Regular") is not None:
+        return 400, is_italic
+    return None, is_italic
 
 
 def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subfamily: str) -> Path:
@@ -245,7 +224,8 @@ def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subf
         # Update OS/2 and head flags when available
         try:
             os2 = font["OS/2"]
-            os2.usWeightClass = int(weight)
+            if weight is not None:
+                os2.usWeightClass = int(weight)
             # fsSelection bits: 0=ITALIC, 5=BOLD, 6=REGULAR
             fs = getattr(os2, "fsSelection", 0)
             def _set_bit(val: int, bit: int, on: bool) -> int:
