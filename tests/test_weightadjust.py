@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+from pathlib import Path
+from subprocess import CompletedProcess
+import importlib
+import sys
+import pytest
+
+
+# Ensure project root is importable
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+
+def _import_module():
+    return importlib.import_module("weightadjust")
+
+
+def test_is_ttf_true_false(tmp_path: Path):
+    wa = _import_module()
+
+    assert wa.is_ttf(Path("A.ttf"))
+    assert wa.is_ttf(Path("B.TTF"))
+    assert not wa.is_ttf(Path("X.otf"))
+    assert not wa.is_ttf(Path("X.woff"))
+    assert not wa.is_ttf(tmp_path)  # directory
+
+
+def test_discover_ttf_mixed(tmp_path: Path):
+    wa = _import_module()
+
+    d1 = tmp_path / "a" / "b"; d1.mkdir(parents=True)
+    f1 = tmp_path / "root.ttf"; f1.write_bytes(b"\0")
+    f2 = d1 / "sub.TtF"; f2.write_bytes(b"\0")
+    nf = d1 / "readme.txt"; nf.write_text("hi")
+
+    inputs = [f1, tmp_path, Path("/nope/missing")]  # nonexistent ignored
+    result = wa.discover_ttf([Path(p) for p in inputs])
+    expected = sorted({f1.resolve(), f2.resolve()})
+    assert result == expected
+
+
+def test_parse_weight_valid_invalid():
+    wa = _import_module()
+
+    assert wa.parse_weight("400") == 400.0
+    assert wa.parse_weight("425.5") == pytest.approx(425.5)
+
+    for bad in ["-1", "abc", "nan", "inf", "-inf", ""]:
+        with pytest.raises(Exception):
+            wa.parse_weight(bad)
+
+
+def test_build_mutator_argv(tmp_path: Path):
+    wa = _import_module()
+
+    font = tmp_path / "Font.ttf"
+    out = tmp_path / "out" / "Font-400.ttf"
+    argv = wa.build_mutator_argv(font, 400.0, out, py_exe="/usr/bin/python3")
+
+    assert argv[:3] == ["/usr/bin/python3", "-m", "fontTools.varLib.mutator"]
+    assert str(font) in argv
+    assert f"wght=400.0" in argv
+    # Ensure output flag and path are present and ordered
+    oi = argv.index("-o")
+    assert argv[oi + 1] == str(out)
+
+
+def test_read_wght_range_found_and_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    wa = _import_module()
+
+    class Axis:
+        def __init__(self, tag: str, minimum: float, maximum: float):
+            self.tag = tag
+            self.minValue = minimum
+            self.maxValue = maximum
+
+    class FVar:
+        def __init__(self, axes):
+            self.axes = axes
+
+    class FakeTTFont:
+        def __init__(self, path):
+            self.path = path
+            # Switch behavior based on filename
+            if "has" in path.name:
+                self.fvar = FVar([Axis("wght", 200.0, 900.0), Axis("wdth", 75.0, 125.0)])
+            elif "nofvar" in path.name:
+                self.fvar = None
+            else:
+                self.fvar = FVar([Axis("wdth", 80.0, 120.0)])
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(wa, "TTFont", FakeTTFont)
+
+    has = tmp_path / "has.ttf"; has.write_bytes(b"\0")
+    missing_axis = tmp_path / "missing.ttf"; missing_axis.write_bytes(b"\0")
+    nofvar = tmp_path / "nofvar.ttf"; nofvar.write_bytes(b"\0")
+
+    assert wa.read_wght_range(has) == (200.0, 900.0)
+    assert wa.read_wght_range(missing_axis) is None
+    assert wa.read_wght_range(nofvar) is None
+
+
+def test_adjust_font_weight_success_and_out_of_range(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    wa = _import_module()
+
+    font = tmp_path / "F.ttf"; font.write_bytes(b"\0")
+    out_dir = tmp_path / "out"; out_dir.mkdir()
+
+    # Mock range to include 400, and exclude 1000
+    monkeypatch.setattr(wa, "read_wght_range", lambda p: (200.0, 900.0))
+
+    created_paths: list[Path] = []
+
+    def runner(argv: list[str]) -> CompletedProcess:
+        # create the output file indicated after -o
+        try:
+            oi = argv.index("-o")
+            out_path = Path(argv[oi + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(b"ok")
+            created_paths.append(out_path)
+            return CompletedProcess(argv, 0, stdout="ok", stderr="")
+        except Exception as e:  # pragma: no cover - test should not hit
+            return CompletedProcess(argv, 1, stdout="", stderr=str(e))
+
+    # Success path
+    dst = wa.adjust_font_weight(font, 400.0, out_dir, runner=runner)
+    assert dst == out_dir / f"{font.stem}-400.ttf"
+    assert dst.exists()
+
+    # Out-of-range should raise
+    with pytest.raises(RuntimeError):
+        wa.adjust_font_weight(font, 1000.0, out_dir, runner=runner)
+
+
