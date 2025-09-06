@@ -22,7 +22,8 @@ def test_humanize_stem_basic_examples():
 
     s = "PragmataProMonoVF_liga_0902-Extra-bold-NerdFont"
     human = na.humanize_stem(s)
-    assert human == "PragmataProMono Liga 0902 Extra Bold NerdFont"
+    # Version token (0902) removed
+    assert human == "PragmataProMono Liga Extra Bold NerdFont"
 
     assert na.humanize_stem("my_font-VF-italic") == "My Font Italic"
     assert na.humanize_stem("CoolFont-regular") == "CoolFont Regular"
@@ -31,11 +32,11 @@ def test_humanize_stem_basic_examples():
 def test_split_family_subfamily_with_trailing_and_embedded_style():
     na = _import_module()
 
-    human = "PragmataProMono Liga 0902 Extra Bold NerdFont"
+    human = "PragmataProMono Liga Extra Bold NerdFont"
     fam, sub = na.split_family_subfamily(human)
     # Extract the style phrase and keep remainder as family
     assert sub == "Extra Bold"
-    assert fam == "PragmataProMono Liga 0902 NerdFont"
+    assert fam == "PragmataProMono Liga NerdFont"
 
     human2 = "CoolFont Regular"
     fam2, sub2 = na.split_family_subfamily(human2)
@@ -43,8 +44,8 @@ def test_split_family_subfamily_with_trailing_and_embedded_style():
     assert sub2 == "Regular"
 
     # No style tokens -> default Regular
-    fam3, sub3 = na.split_family_subfamily("BrandXYZ 0902")
-    assert fam3 == "BrandXYZ 0902"
+    fam3, sub3 = na.split_family_subfamily("BrandXYZ")
+    assert fam3 == "BrandXYZ"
     assert sub3 == "Regular"
 
 
@@ -135,14 +136,16 @@ def test_process_font_inplace_and_copy(tmp_path: Path, monkeypatch: pytest.Monke
     src = tmp_path / "PragmataProMonoVF_liga_0902-Extra-bold-NerdFont.ttf"
     src.write_bytes(b"\0")
 
-    # In-place
+    # In-place should rename to cleaned filename and write
     out1 = na.process_font(src, out_dir=None)
-    assert out1 == src
+    expected_name = "PragmataProMono_Liga_NerdFont-Extra_Bold.ttf"
+    assert out1.name == expected_name
     assert out1.exists()
+    assert not src.exists()
 
-    # Copy to output dir
+    # Copy to output dir uses cleaned filename
     out_dir = tmp_path / "out"
-    out2 = na.process_font(src, out_dir=out_dir)
-    assert out2 == out_dir / src.name
+    # Use the renamed in-place file as source now
+    out2 = na.process_font(out1, out_dir=out_dir)
+    assert out2 == out_dir / expected_name
     assert out2.exists()
-
