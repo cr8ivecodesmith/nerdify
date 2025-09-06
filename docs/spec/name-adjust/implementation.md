@@ -3,7 +3,7 @@ Name Adjust Implementation Plan
 
 Overview
 --------
-- Goal: Provide a Python CLI (`nameadjust.py`) that normalizes and updates a font’s internal names (name table) based on a Humanized form of its filename, matching `spec3.md`.
+- Goal: Provide a Python CLI (`nameadjust.py`) that normalizes and updates a font’s internal names (name table) based on a Humanized form of its filename, matching the Spec (`./spec.md`).
 - Approach: Keep the transformation from filename → Humanized name pure and well‑tested; isolate font I/O to a small function using FontTools. Default behavior updates in place; optional `-o` writes a copy with updated internals.
 
 CLI Design
@@ -31,7 +31,9 @@ Core Flow
    - Open the font with FontTools and update name records:
      - Family (nameID 1), Subfamily (nameID 2), Full name (nameID 4), PostScript name (nameID 6).
      - Write both Windows (3,1,0x409) and Mac (1,0,0) platform records.
-   - Save in place, or to `OUTDIR/<original-filename>` when `-o` is provided.
+   - Determine a cleaned output filename based on the computed Family/Subfamily:
+     - Build `<Family>-<Subfamily>` as the stem, then replace spaces with underscores; retain the hyphen between Family and Subfamily.
+   - Save in place (renaming the file to the cleaned stem when necessary), or to `OUTDIR/<cleaned-filename>` when `-o` is provided.
 3. Print per‑font `OK/FAIL` summaries and a final count.
 
 Humanization Rules
@@ -39,7 +41,7 @@ Humanization Rules
 - Tokenize: split the filename stem on underscores (`_`) and hyphens (`-`).
 - Preserve CamelCase: leave tokens that contain an internal capital sequence unchanged (e.g., `PragmataProMono`, `NerdFont`).
 - Title‑case lower/uppercase words: `extra-bold` → `Extra Bold`, `italic` → `Italic`, `regular` → `Regular`.
-- Preserve numerics: keep numeric tokens unchanged (e.g., `0902`).
+- Remove version tokens: drop tokens that look like a version number from the Humanized name. A token is considered a version when it matches `^(?:v)?\d+(?:[._]\d+)*$` (e.g., `0902`, `v1`, `1.0`, `v1.2.3`). Tokens with mixed alnum (e.g., `H2`) are preserved.
 - Drop common variable‑font markers: remove standalone `VF` (case‑insensitive). Optionally drop `VAR`/`Variable` if present as a standalone token.
 - Join with single spaces; collapse multiple delimiters and trim edges.
 
@@ -58,6 +60,14 @@ Name Table Updates
 - PostScript (ID 6): `<Family>-<Subfamily>` with spaces removed in each part and only allowed characters `[A-Za-z0-9-]` (strip/replace others). Ensure non‑empty and <= 63 chars when possible.
 - Platforms: write Windows (3,1,0x409) and Mac (1,0,0) variants for all above IDs.
 
+Filename Normalization
+----------------------
+- Build the output filename from computed names, not the original:
+  - Stem: `<Family>-<Subfamily>`; replace spaces with underscores; retain the hyphen between Family and Subfamily.
+  - Extension: preserve original extension (currently `.ttf`).
+- In-place mode: rename the file to the cleaned filename before writing, when the stem differs.
+- Output dir mode (`-o`): write to `OUTDIR/<cleaned-filename>`.
+
 Functions & Types
 -----------------
 - `def is_ttf(path: Path) -> bool`:
@@ -67,7 +77,10 @@ Functions & Types
   - Reuse pattern from `weightadjust.py`: resolve deduped, sorted `.ttf` files from files/dirs.
 
 - `def humanize_stem(stem: str) -> str`:
-  - Pure transformation from filename stem → Humanized string (implements tokenization, casing, filtering, and join).
+  - Pure transformation from filename stem → Humanized string (implements tokenization, version filtering, casing, and join).
+
+- `def make_clean_stem(family: str, subfamily: str) -> str`:
+  - Returns `<Family>-<Subfamily>` with spaces replaced by underscores.
 
 - `def split_family_subfamily(humanized: str) -> tuple[str, str]`:
   - Returns `(family, subfamily)` using the heuristics above.
@@ -88,9 +101,10 @@ Implementation Notes
 --------------------
 - Title‑casing: use `str.title()` for simple lower/upper tokens, but retain original token for CamelCase (detect via `[a-z][A-Z]`).
 - Token filtering: drop tokens that are exactly `VF` case‑insensitively; consider extending to `VAR`/`Variable` if needed.
+- Version detection: treat tokens as versions when they match `^(?:v)?\d+(?:[._]\d+)*$`.
 - Style phrase detection: normalize spaces and dashes, then match against a small set of known phrases; support two‑word combos like `Extra Bold`, `Semi Bold`, and `Bold Italic`.
 - PostScript constraints: strip characters outside `[A-Za-z0-9-]`; collapse repeated hyphens; trim edges.
-- In‑place vs copy: when `-o` is provided, copy the original file to `<OUTDIR>/<original-filename>` first, then open and rewrite that copy.
+- In‑place vs copy: when `-o` is provided, open the original and write a cleaned copy to `<OUTDIR>/<cleaned-filename>`.
 - Determinism: process fonts in sorted order; print consistent OK/FAIL lines.
 
 Error Handling
@@ -126,4 +140,3 @@ Future Enhancements
 - `--dry-run` to preview computed Family/Subfamily and Full names without writing.
 - Support `.otf` where FontTools permits safe name rewriting.
 - Optional mapping file to customize token normalization and style detection.
-

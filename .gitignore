@@ -1,17 +1,20 @@
 *.py[cod]
 __pycache__
-
+*~
 *.pkl
 .env
-.ropeproject
-
 .python-version
 
 .coverage*
 .pytest_cache
+.ropeproject
+.DS_Store/
 
 FontPatcher/
 fonts/
+patched/
+fonts_weighted/
 *.zip
-*.ttf
-*.otf
+*.tar*
+*.tt[cf]
+*.ot[cf]

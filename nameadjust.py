@@ -40,10 +40,16 @@ def discover_ttf(inputs: Iterable[Path]) -> list[Path]:
 
 
 _SPLIT_RE = re.compile(r"[_\-]+")
+_VERSION_TOKEN_RE = re.compile(r"^(?:v)?\d+(?:[._]\d+)*$")
 
 
 def _is_camel_like(token: str) -> bool:
     return bool(re.search(r"[a-z][A-Z]", token))
+
+
+def _is_version_token(token: str) -> bool:
+    """Heuristic: token looks like a version (e.g., 0902, 1.0, v1, v1.2.3)."""
+    return bool(_VERSION_TOKEN_RE.match(token))
 
 
 def humanize_stem(stem: str) -> str:
@@ -53,7 +59,8 @@ def humanize_stem(stem: str) -> str:
     - Split on '_' and '-' and collapse repeats.
     - Drop standalone 'VF' (case-insensitive).
     - Preserve CamelCase tokens; Title Case purely lower/upper tokens.
-    - Keep numeric tokens unchanged; preserve other alnum chars.
+    - Remove version-like tokens (e.g., 0902, 1.0, v1, v1.2.3).
+    - Preserve other alnum tokens (including CamelCase and mixed tokens like H2).
     - Join with single spaces.
     """
     tokens = [t for t in _SPLIT_RE.split(stem) if t]
@@ -66,8 +73,8 @@ def humanize_stem(stem: str) -> str:
             continue
         if tok.lower() == "vf":
             continue
-        if tok.isnumeric():
-            out.append(tok)
+        # Drop version tokens entirely
+        if _is_version_token(tok):
             continue
         if _is_camel_like(tok):
             out.append(tok)
@@ -145,6 +152,17 @@ def ps_name(family: str, subfamily: str) -> str:
     return f"{fam}-{sub}" if sub else fam
 
 
+def make_clean_stem(family: str, subfamily: str) -> str:
+    """Return cleaned filename stem: <Family>-<Subfamily> with spaces → underscores.
+
+    Always retains the hyphen between Family and Subfamily; if Subfamily is empty,
+    returns just the Family part.
+    """
+    fam = family.replace(" ", "_")
+    sub = subfamily.replace(" ", "_")
+    return f"{fam}-{sub}" if sub else fam
+
+
 def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subfamily: str) -> Path:
     """Rewrite name table IDs 1/2/4/6 for Windows and Mac platforms.
 
@@ -184,17 +202,27 @@ def process_font(path: Path, out_dir: Path | None) -> Path:
     Returns the written path (either in place or the copied path under out_dir).
     """
     path = Path(path)
+    human = humanize_stem(path.stem)
+    family, subfamily = split_family_subfamily(human)
+
+    # Determine cleaned filename
+    clean_stem = make_clean_stem(family, subfamily)
+    suffix = path.suffix
+
     if out_dir is None:
+        # In-place, but rename to cleaned filename if needed
         target = path
+        new_path = path.with_name(f"{clean_stem}{suffix}")
+        if new_path != path:
+            # Rename first so rewrite writes to the final location
+            path = path.rename(new_path)
+            target = new_path
+        return rewrite_name_table(target, out_path=target, family=family, subfamily=subfamily)
     else:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        target = out_dir / path.name
-        shutil.copyfile(path, target)
-
-    human = humanize_stem(path.stem)
-    family, subfamily = split_family_subfamily(human)
-    return rewrite_name_table(target, out_path=target, family=family, subfamily=subfamily)
+        out_path = out_dir / f"{clean_stem}{suffix}"
+        return rewrite_name_table(path, out_path=out_path, family=family, subfamily=subfamily)
 
 
 def _build_parser() -> argparse.ArgumentParser:
