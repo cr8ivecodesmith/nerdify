@@ -38,17 +38,9 @@ However with this script we should be able to:
 
 Weights Table:
 
-| Numeric Value | Name (Common Usage)       | Notes                              |
-| ------------- | ------------------------- | ---------------------------------- |
-| **100**       | Thin                      | Ultra Light                        |
-| **200**       | Extra-Light               | Slightly thicker than Thin         |
-| **300**       | Light                     |                                    |
-| **400**       | Regular                   | Sometimes called “Book” or “Roman” |
-| **500**       | Medium                    |                                    |
-| **600**       | Semi-Bold                 |                                    |
-| **700**       | Bold                      | The most common “bold”             |
-| **800**       | Extra-Bold                |                                    |
-| **900**       | Black                     | Sometimes “Fat”                    |
+- The list of weights (names and numeric values) is read from `fontweights.toml`. See `docs/spec/fontweights/spec.md`.
+- The config file is required; if missing or invalid, the tool exits with an error.
+- Ordering: Weights are processed in ascending numeric order; canonical names are used for output filenames and internal name adjustments.
 
 Notes:
 

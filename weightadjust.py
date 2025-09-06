@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from subprocess import CompletedProcess, run
 from typing import Callable, Iterable, List, Optional, Tuple
@@ -11,6 +10,7 @@ import math
 import sys
 
 from fontTools.ttLib import TTFont  # type: ignore
+from common.fontweights import load_config, standard_weights
 
 
 def is_ttf(path: Path) -> bool:
@@ -83,19 +83,6 @@ def _weight_for_filename(weight: float) -> str:
         return str(int(weight))
     return str(weight)
 
-
-# Standard weight table as per spec2
-WEIGHT_TABLE: list[tuple[int, str]] = [
-    (100, "Thin"),
-    (200, "Extra-Light"),
-    (300, "Light"),
-    (400, "Regular"),
-    (500, "Medium"),
-    (600, "Semi-Bold"),
-    (700, "Bold"),
-    (800, "Extra-Bold"),
-    (900, "Black"),
-]
 
 
 def parse_weight_offset(value: str) -> float:
@@ -241,7 +228,9 @@ def process_font_all_weights(
     """
     created: list[Path] = []
     rng = read_wght_range(font)
-    for base, name in WEIGHT_TABLE:
+    # Load weights config (required)
+    cfg = load_config()
+    for base, name in standard_weights(cfg):
         target = float(base) + float(offset)
         if rng is not None:
             mn, mx = rng

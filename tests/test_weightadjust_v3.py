@@ -42,6 +42,25 @@ def test_process_font_all_weights_creates_expected_files(monkeypatch: pytest.Mon
     font = tmp_path / "F.ttf"; font.write_bytes(b"\0")
     out_dir = tmp_path / "out"
 
+    # Provide a temporary fontweights.toml as required by the tool
+    cfg = tmp_path / "fontweights.toml"
+    cfg.write_text(
+        """
+        [weights]
+        Thin = 100
+        "Extra-Light" = 200
+        Light = 300
+        Regular = 400
+        Medium = 500
+        "Semi-Bold" = 600
+        Bold = 700
+        "Extra-Bold" = 800
+        Black = 900
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
     # Range covers all standard weights
     monkeypatch.setattr(wa, "read_wght_range", lambda p: (100.0, 900.0))
 
@@ -70,4 +89,3 @@ def test_process_font_all_weights_creates_expected_files(monkeypatch: pytest.Mon
     assert len(results2) == 9
     assert (out_dir2 / "F-Regular-410.ttf").exists()
     assert (out_dir2 / "F-Bold-710.ttf").exists()
-

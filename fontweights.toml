@@ -1,0 +1,26 @@
+[weights]
+Thin = 100
+"Extra-Light" = 200
+Light = 300
+Regular = 400
+Medium = 500
+"Semi-Bold" = 600
+Bold = 700
+"Extra-Bold" = 800
+Black = 900
+
+[aliases]
+Hairline = "Thin"
+"Ultra Light" = "Extra-Light"
+Extralight = "Extra-Light"
+"Extra Light" = "Extra-Light"
+"Semi Bold" = "Semi-Bold"
+Semibold = "Semi-Bold"
+"Demi Bold" = "Semi-Bold"
+Demibold = "Semi-Bold"
+Book = "Regular"
+Roman = "Regular"
+"Ultra Bold" = "Extra-Bold"
+Extrabold = "Extra-Bold"
+Heavy = "Black"
+
