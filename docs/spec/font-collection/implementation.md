@@ -64,6 +64,7 @@ Core Functions
 
 - `def weight_and_style_from_names(family: str | None, subfamily: str | None, stem: str) -> tuple[int | None, bool]`
   - Determine weight (numeric) and italic flag from Typographic Subfamily (ID 17) when available; fallback to Legacy Subfamily (ID 2) and then family/stem tokens using `WEIGHT_MAP` and `ITALIC_TOKENS`. Treat Bold strictly (don’t infer from Medium/600).
+  - Style normalization note: when interpreting style phrases, `Italic` should be considered a modifier that appears at the end (e.g., `Regular Italic`). Inputs normalized by `nameadjust.py` already follow this.
 
 - `def sort_fonts(fonts: Sequence[Path]) -> list[Path]`
   - Build tuples `(weight or 1000, italic as int (0 for roman, 1 for italic), normalized_stem)` and sort.

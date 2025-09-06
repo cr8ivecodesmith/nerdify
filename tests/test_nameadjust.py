@@ -149,3 +149,39 @@ def test_process_font_inplace_and_copy(tmp_path: Path, monkeypatch: pytest.Monke
     out2 = na.process_font(out1, out_dir=out_dir)
     assert out2 == out_dir / expected_name
     assert out2.exists()
+
+
+def test_reorder_italic_in_filename(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    na = _import_module()
+
+    # Track name table writes
+    calls: list[tuple] = []
+
+    class FakeNameTable:
+        def setName(self, value, nameID, platformID, platEncID, langID):
+            calls.append((nameID, value))
+
+    class FakeTTFont:
+        def __init__(self, path):
+            self.path = Path(path)
+            self.tables = {"name": FakeNameTable()}
+        def __getitem__(self, key):
+            return self.tables[key]
+        def save(self, out_path):
+            Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(out_path).write_bytes(b"ok")
+        def close(self):
+            return None
+
+    monkeypatch.setattr(na, "TTFont", FakeTTFont)
+
+    src = tmp_path / "CoolFont_Italic-Regular.ttf"
+    src.write_bytes(b"\0")
+
+    out = na.process_font(src, out_dir=None)
+    # Expect filename reordered with Italic at the end of Subfamily
+    assert out.name == "CoolFont-Regular_Italic.ttf"
+
+    # Expect Subfamily (nameID 17) written as 'Regular Italic'
+    subfam_vals = [v for (nid, v) in calls if nid == 17]
+    assert any(v == "Regular Italic" for v in subfam_vals)

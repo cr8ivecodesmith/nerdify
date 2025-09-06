@@ -51,9 +51,15 @@ Humanization Rules
 Family/Subfamily Heuristics
 ---------------------------
 - Recognized style/weight tokens (case‑insensitive):
-  - `Thin`, `Extra Light`, `Light`, `Regular`, `Medium`, `Semi Bold`, `Bold`, `Extra Bold`, `Black`, `Italic` (and combinations like `Bold Italic`).
-- If the trailing tokens form a recognized style phrase, assign that phrase to Subfamily and the preceding tokens to Family.
-- Otherwise, set Family to the entire Humanized string and Subfamily to `Regular`.
+  - `Thin`, `Extra Light`, `Light`, `Regular`, `Medium`, `Semi Bold`, `Bold`, `Extra Bold`, `Black`.
+- Italic placement rule:
+  - Treat `Italic` as a modifier that is appended to the detected base style regardless of its original position.
+  - Examples: `Italic Regular` → Subfamily=`Regular Italic`; `Extra Bold Italic` → Subfamily=`Extra Bold Italic`.
+- Detection:
+  - Find the rightmost base style phrase (prefer 3‑word over 2‑word over 1‑word) in the Humanized tokens with `Italic` temporarily removed.
+  - If found, Subfamily=`<BaseStyle>` and if `Italic` appeared anywhere, append ` Italic`.
+  - If no base style is found but `Italic` appeared, Subfamily=`Italic` and Family is the remainder.
+  - Otherwise, Family is the entire Humanized string and Subfamily=`Regular`.
 
 Name & Flag Updates
 -------------------

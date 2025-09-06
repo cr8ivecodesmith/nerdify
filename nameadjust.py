@@ -107,35 +107,47 @@ _STYLE_SET.add("Italic")
 def split_family_subfamily(humanized: str) -> tuple[str, str]:
     """Split a Humanized string into (Family, Subfamily).
 
-    Heuristic: find the rightmost recognized style phrase (length 3, then 2, then 1 tokens);
-    treat it as Subfamily and remove it from the token list. The remainder becomes Family.
-    If no style phrase is found, Subfamily = 'Regular' and Family = the entire Humanized string.
+    Rules:
+    - Detect a base style phrase (Thin…Black, Regular, etc.) using rightmost match, preferring longer phrases.
+    - Treat "Italic" as a modifier that must appear at the end of the Subfamily when present, regardless of
+      where it appears in the input tokens (e.g., "Italic Regular" → "Regular Italic").
+    - If no base style is found but "Italic" is present, Subfamily is "Italic" and Family is the remainder.
+    - If neither a base style nor Italic is present, Subfamily defaults to "Regular" and Family is the entire input.
     """
     toks = [t for t in humanized.split(" ") if t]
     if not toks:
         return "", "Regular"
 
-    found: tuple[int, int] | None = None  # (start, end) inclusive
-    n = len(toks)
-    # search right-to-left, prefer longer phrases
+    # Extract Italic anywhere in the stream; compose it at the end of Subfamily later
+    has_italic = any(t.lower() == "italic" for t in toks)
+    toks_wo_italic = [t for t in toks if t.lower() != "italic"]
+
+    # Find rightmost base style phrase (without Italic) in the remaining tokens
+    found: tuple[int, int] | None = None  # (start, end) inclusive in toks_wo_italic
+    n = len(toks_wo_italic)
     for i in range(n - 1, -1, -1):
         for size in (3, 2, 1):
             start = i - size + 1
             if start < 0:
                 continue
-            phrase = " ".join(toks[start : i + 1])
-            if phrase in _STYLE_SET:
+            phrase = " ".join(toks_wo_italic[start : i + 1])
+            if phrase in _BASE_STYLES:
                 found = (start, i)
                 break
         if found:
             break
 
     if found is None:
+        # No base style found; if Italic present, it's a pure Italic style
+        family = " ".join(toks_wo_italic).strip()
+        if has_italic:
+            return family, "Italic"
         return humanized, "Regular"
 
     s, e = found
-    subfamily = " ".join(toks[s : e + 1])
-    family_tokens = toks[:s] + toks[e + 1 :]
+    base = " ".join(toks_wo_italic[s : e + 1])
+    subfamily = f"{base} Italic" if has_italic else base
+    family_tokens = toks_wo_italic[:s] + toks_wo_italic[e + 1 :]
     family = " ".join(family_tokens).strip() or humanized
     return family, subfamily
 

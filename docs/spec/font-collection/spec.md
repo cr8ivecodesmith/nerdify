@@ -24,6 +24,7 @@ createcollection.py [font files or dirs ...] [-o OUTDIR] [--type {ttc,otc}] [--n
   - If internal families still differ or are missing, compute a base name from filename stems by removing trailing weight/style tokens and taking the longest common non-empty prefix of tokens: `<BaseName>.ttc|.otc`.
   - Normalize the final filename to safe characters (A–Z, a–z, 0–9, dash, underscore, dot); convert spaces to underscores, retain dashes, and collapse repeats.
   - Allow explicit override via `--name NAME` (filename becomes `NAME.ttc|.otc`).
+  - Style normalization note: when deriving or interpreting style phrases, ensure `Italic` appears at the end (e.g., filenames like `CoolFont_Italic-Regular.ttf` are treated as `CoolFont-Regular_Italic.ttf` when normalized by `nameadjust.py`).
 - Validates compatibility constraints to avoid creating invalid collections:
   - All inputs must share the same SFNT flavor: TrueType (`\x00\x01\x00\x00`) for TTC, or CFF/CFF2 (`OTTO`) for OTC.
   - Reject mixed outline types (e.g., mixing TTF and OTF) unless the user forces `--type` and all fonts actually match the enforced type; otherwise, error with guidance.

@@ -42,12 +42,14 @@ Essentially this script automates the following steps:
 - Preserve numeric tokens (e.g., `0902`).
 - Remove common variable‑font markers when standalone or trailing a family token: `VF`.
 - Normalize known style synonyms to Title Case (e.g., `bold` → `Bold`, `regular` → `Regular`, `italic` → `Italic`).
+- Italic placement: when the word `Italic` appears anywhere, treat it as a style modifier and place it at the end of the Subfamily phrase (e.g., `CoolFont_Italic-Regular` → Subfamily=`Regular Italic`).
 - Collapse excess whitespace; strip leading/trailing spaces.
 
 Heuristics for family vs subfamily (style):
 
-- Recognize typical weight/style phrases: `Thin`, `Extra Light`, `Light`, `Regular`, `Medium`, `Semi Bold`, `Bold`, `Extra Bold`, `Black`, and italic variants (e.g., `Italic`, `Bold Italic`).
-- If the trailing tokens form a recognized style phrase, assign them to Subfamily and the preceding tokens to Family.
+- Recognize typical weight/style phrases: `Thin`, `Extra Light`, `Light`, `Regular`, `Medium`, `Semi Bold`, `Bold`, `Extra Bold`, `Black`. `Italic` is treated as a modifier that is always appended to the detected base style.
+- Detect the rightmost base style phrase and assign it to Subfamily; if `Italic` is present anywhere, append it so Subfamily ends with `Italic`.
+- If no base style is detected but `Italic` is present, Subfamily is `Italic` and Family is the remainder.
 - Otherwise, Family is the entire Humanized name and Subfamily defaults to `Regular`.
 
 ## Examples
@@ -63,6 +65,10 @@ Heuristics for family vs subfamily (style):
 - Input filename: `my_font-VF-italic.ttf`
   - Humanized: `My Font Italic`
   - Family/Subfamily: Family=`My Font`, Subfamily=`Italic`
+
+- Input filename: `CoolFont_Italic-Regular.ttf`
+  - Humanized: `CoolFont Italic Regular`
+  - Family/Subfamily: Family=`CoolFont`, Subfamily=`Regular Italic`
 
 ## Notes
 
