@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from subprocess import CompletedProcess
-import importlib
 import sys
-import pytest
 
+import pytest
 
 # Ensure project root is importable
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,10 +30,14 @@ def test_is_ttf_true_false(tmp_path: Path):
 def test_discover_ttf_mixed(tmp_path: Path):
     wa = _import_module()
 
-    d1 = tmp_path / "a" / "b"; d1.mkdir(parents=True)
-    f1 = tmp_path / "root.ttf"; f1.write_bytes(b"\0")
-    f2 = d1 / "sub.TtF"; f2.write_bytes(b"\0")
-    nf = d1 / "readme.txt"; nf.write_text("hi")
+    d1 = tmp_path / "a" / "b"
+    d1.mkdir(parents=True)
+    f1 = tmp_path / "root.ttf"
+    f1.write_bytes(b"\0")
+    f2 = d1 / "sub.TtF"
+    f2.write_bytes(b"\0")
+    nf = d1 / "readme.txt"
+    nf.write_text("hi")
 
     inputs = [f1, tmp_path, Path("/nope/missing")]  # nonexistent ignored
     result = wa.discover_ttf([Path(p) for p in inputs])
@@ -61,7 +65,7 @@ def test_build_mutator_argv(tmp_path: Path):
 
     assert argv[:3] == ["/usr/bin/python3", "-m", "fontTools.varLib.mutator"]
     assert str(font) in argv
-    assert f"wght=400.0" in argv
+    assert "wght=400.0" in argv
     # Ensure output flag and path are present and ordered
     oi = argv.index("-o")
     assert argv[oi + 1] == str(out)
@@ -96,20 +100,27 @@ def test_read_wght_range_found_and_missing(monkeypatch: pytest.MonkeyPatch, tmp_
 
     monkeypatch.setattr(wa, "TTFont", FakeTTFont)
 
-    has = tmp_path / "has.ttf"; has.write_bytes(b"\0")
-    missing_axis = tmp_path / "missing.ttf"; missing_axis.write_bytes(b"\0")
-    nofvar = tmp_path / "nofvar.ttf"; nofvar.write_bytes(b"\0")
+    has = tmp_path / "has.ttf"
+    has.write_bytes(b"\0")
+    missing_axis = tmp_path / "missing.ttf"
+    missing_axis.write_bytes(b"\0")
+    nofvar = tmp_path / "nofvar.ttf"
+    nofvar.write_bytes(b"\0")
 
     assert wa.read_wght_range(has) == (200.0, 900.0)
     assert wa.read_wght_range(missing_axis) is None
     assert wa.read_wght_range(nofvar) is None
 
 
-def test_adjust_font_weight_success_and_out_of_range(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_adjust_font_weight_success_and_out_of_range(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     wa = _import_module()
 
-    font = tmp_path / "F.ttf"; font.write_bytes(b"\0")
-    out_dir = tmp_path / "out"; out_dir.mkdir()
+    font = tmp_path / "F.ttf"
+    font.write_bytes(b"\0")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
 
     # Mock range to include 400, and exclude 1000
     monkeypatch.setattr(wa, "read_wght_range", lambda p: (200.0, 900.0))
@@ -164,10 +175,13 @@ def test_compose_weight_basename_formatting(tmp_path: Path):
     assert wa.compose_weight_basename(font, "Bold", 700, 712.5, 12.5) == "Cool-Bold-712.5"
 
 
-def test_process_font_all_weights_creates_expected_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_process_font_all_weights_creates_expected_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     wa = _import_module()
 
-    font = tmp_path / "F.ttf"; font.write_bytes(b"\0")
+    font = tmp_path / "F.ttf"
+    font.write_bytes(b"\0")
     out_dir = tmp_path / "out"
 
     # Provide a temporary fontweights.toml as required by the tool
@@ -217,4 +231,3 @@ def test_process_font_all_weights_creates_expected_files(monkeypatch: pytest.Mon
     assert len(results2) == 9
     assert (out_dir2 / "F-Regular-410.ttf").exists()
     assert (out_dir2 / "F-Bold-710.ttf").exists()
-

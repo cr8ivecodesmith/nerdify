@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
 
@@ -37,5 +38,5 @@ def test_infer_weight_and_italic_from_subfamily(monkeypatch: pytest.MonkeyPatch,
     _write_cfg(tmp_path)
 
     w, it = _infer_weight_and_italic_from_subfamily("Ultra Light Italic")
-    assert w == 200 and it is True
-
+    assert w == 200
+    assert it is True

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Iterable, Tuple
 import argparse
+from collections.abc import Iterable
+import contextlib
+from pathlib import Path
 import re
-import shutil
 import sys
 
 from fontTools.ttLib import TTFont  # type: ignore
+
 from common.fontweights import load_config, lookup_value
 
 
@@ -93,9 +94,9 @@ def _style_phrases() -> set[str]:
     """
     cfg = load_config()
     phrases: set[str] = set()
-    for canon in cfg.canonical_to_value.keys():
+    for canon in cfg.canonical_to_value:
         phrases.add(" ".join(canon.replace("-", " ").split()).title())
-    for norm in cfg.normalized_to_canonical.keys():
+    for norm in cfg.normalized_to_canonical:
         phrases.add(" ".join(norm.split()).title())
     phrases.add("Italic")
     return phrases
@@ -228,10 +229,13 @@ def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subf
                 os2.usWeightClass = int(weight)
             # fsSelection bits: 0=ITALIC, 5=BOLD, 6=REGULAR
             fs = getattr(os2, "fsSelection", 0)
+
             def _set_bit(val: int, bit: int, on: bool) -> int:
                 return (val | (1 << bit)) if on else (val & ~(1 << bit))
 
-            is_bold_style = " bold" in (" " + subfamily.lower()) and "extra bold" not in subfamily.lower()
+            is_bold_style = (
+                " bold" in (" " + subfamily.lower()) and "extra bold" not in subfamily.lower()
+            )
             is_regular_upright = (subfamily.lower() == "regular") and not italic
             fs = _set_bit(fs, 0, italic)
             fs = _set_bit(fs, 5, is_bold_style)
@@ -243,11 +247,14 @@ def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subf
         try:
             head = font["head"]
             mac = getattr(head, "macStyle", 0)
+
             # macStyle bits: 0=Bold, 1=Italic
             def _set_bit(val: int, bit: int, on: bool) -> int:
                 return (val | (1 << bit)) if on else (val & ~(1 << bit))
 
-            is_bold_style = " bold" in (" " + subfamily.lower()) and "extra bold" not in subfamily.lower()
+            is_bold_style = (
+                " bold" in (" " + subfamily.lower()) and "extra bold" not in subfamily.lower()
+            )
             mac = _set_bit(mac, 0, is_bold_style)
             mac = _set_bit(mac, 1, italic)
             head.macStyle = mac
@@ -258,10 +265,8 @@ def rewrite_name_table(ttf_in: Path, *, out_path: Path | None, family: str, subf
         font.save(target)
         return target
     finally:
-        try:
+        with contextlib.suppress(Exception):
             font.close()
-        except Exception:
-            pass
 
 
 def process_font(path: Path, out_dir: Path | None) -> Path:
@@ -286,11 +291,10 @@ def process_font(path: Path, out_dir: Path | None) -> Path:
             path = path.rename(new_path)
             target = new_path
         return rewrite_name_table(target, out_path=target, family=family, subfamily=subfamily)
-    else:
-        out_dir = Path(out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{clean_stem}{suffix}"
-        return rewrite_name_table(path, out_path=out_path, family=family, subfamily=subfamily)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{clean_stem}{suffix}"
+    return rewrite_name_table(path, out_path=out_path, family=family, subfamily=subfamily)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -299,7 +303,13 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Update internal font names from a humanized filename.",
     )
     p.add_argument("paths", nargs="+", help="Font files or directories to search for .ttf files")
-    p.add_argument("-o", "--output", type=Path, default=None, help="Output directory (default: in-place update)")
+    p.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Output directory (default: in-place update)",
+    )
     return p
 
 
@@ -316,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             out = process_font(f, args.output)
             print(f"OK  {f.name} -> {out}")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             failures += 1
             print(f"FAIL {f.name}: {e}", file=sys.stderr)
 

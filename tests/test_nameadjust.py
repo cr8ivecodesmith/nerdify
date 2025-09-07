@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 import importlib
+from pathlib import Path
 import sys
-import shutil
-import pytest
 
+import pytest
 
 # Ensure project root is importable
 ROOT = Path(__file__).resolve().parent.parent
@@ -58,10 +57,14 @@ def test_ps_name_formatting():
 def test_discover_ttf_mixed(tmp_path: Path):
     na = _import_module()
 
-    d = tmp_path / "a" / "b"; d.mkdir(parents=True)
-    t1 = tmp_path / "A.ttf"; t1.write_bytes(b"\0")
-    t2 = d / "B.TtF"; t2.write_bytes(b"\0")
-    other = d / "readme.md"; other.write_text("hi")
+    d = tmp_path / "a" / "b"
+    d.mkdir(parents=True)
+    t1 = tmp_path / "A.ttf"
+    t1.write_bytes(b"\0")
+    t2 = d / "B.TtF"
+    t2.write_bytes(b"\0")
+    other = d / "readme.md"
+    other.write_text("hi")
 
     found = na.discover_ttf([tmp_path, t1])
     assert found == sorted({t1.resolve(), t2.resolve()})
@@ -105,7 +108,7 @@ def test_rewrite_name_table_monkeypatched(tmp_path: Path, monkeypatch: pytest.Mo
     assert out == font
     assert font.exists()
     # Validate that names were written for Mac and Windows platforms for IDs 16,17,1,2,4,6
-    ids = sorted(set(c[0] for c in calls))
+    ids = sorted({c[0] for c in calls})
     assert ids == [1, 2, 4, 6, 16, 17]
 
 
@@ -116,6 +119,7 @@ def test_process_font_inplace_and_copy(tmp_path: Path, monkeypatch: pytest.Monke
     class FakeNameTable:
         def __init__(self):
             self.names = []
+
         def setName(self, value, nameID, platformID, platEncID, langID):
             return None
 
@@ -123,11 +127,14 @@ def test_process_font_inplace_and_copy(tmp_path: Path, monkeypatch: pytest.Monke
         def __init__(self, path):
             self.path = Path(path)
             self.tables = {"name": FakeNameTable()}
+
         def __getitem__(self, key):
             return self.tables[key]
+
         def save(self, out_path):
             Path(out_path).parent.mkdir(parents=True, exist_ok=True)
             Path(out_path).write_bytes(b"ok")
+
         def close(self):
             return None
 
@@ -165,11 +172,14 @@ def test_reorder_italic_in_filename(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         def __init__(self, path):
             self.path = Path(path)
             self.tables = {"name": FakeNameTable()}
+
         def __getitem__(self, key):
             return self.tables[key]
+
         def save(self, out_path):
             Path(out_path).parent.mkdir(parents=True, exist_ok=True)
             Path(out_path).write_bytes(b"ok")
+
         def close(self):
             return None
 

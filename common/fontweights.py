@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
 import sys
 
 try:  # Python 3.11+
@@ -26,8 +25,8 @@ def _normalize_phrase(s: str) -> str:
 
 @dataclass(frozen=True)
 class FontWeights:
-    canonical_to_value: Dict[str, int]
-    normalized_to_canonical: Dict[str, str]
+    canonical_to_value: dict[str, int]
+    normalized_to_canonical: dict[str, str]
 
     @property
     def known_phrases(self) -> set[str]:
@@ -52,7 +51,7 @@ def load_config(path: Path | None = None) -> FontWeights:
     if not isinstance(weights_raw, dict) or not weights_raw:
         raise RuntimeError("fontweights.toml must define a non-empty [weights] table")
 
-    canonical_to_value: Dict[str, int] = {}
+    canonical_to_value: dict[str, int] = {}
     for name, val in weights_raw.items():
         if not isinstance(name, str):
             raise RuntimeError("[weights] keys must be strings")
@@ -60,9 +59,9 @@ def load_config(path: Path | None = None) -> FontWeights:
             raise RuntimeError(f"[weights].{name} must be an integer numeric weight (100..900)")
         canonical_to_value[name] = int(val)
 
-    normalized_to_canonical: Dict[str, str] = {}
+    normalized_to_canonical: dict[str, str] = {}
     # Map canonical names to themselves
-    for canon in canonical_to_value.keys():
+    for canon in canonical_to_value:
         normalized_to_canonical[_normalize_phrase(canon)] = canon
 
     # Apply aliases (optional)
@@ -72,18 +71,27 @@ def load_config(path: Path | None = None) -> FontWeights:
             raise RuntimeError("[aliases] must be a table of alias -> canonical name")
         for alias, canon in aliases_raw.items():
             if not isinstance(alias, str) or not isinstance(canon, str):
-                print("WARN: alias entries must be strings; ignoring one entry", file=sys.stderr)
+                print(
+                    "WARN: alias entries must be strings; ignoring one entry",
+                    file=sys.stderr,
+                )
                 continue
             norm_alias = _normalize_phrase(alias)
             if canon not in canonical_to_value:
-                print(f"WARN: alias '{alias}' refers to unknown canonical '{canon}'; ignoring", file=sys.stderr)
+                print(
+                    f"WARN: alias '{alias}' refers to unknown canonical '{canon}'; ignoring",
+                    file=sys.stderr,
+                )
                 continue
             normalized_to_canonical[norm_alias] = canon
 
-    return FontWeights(canonical_to_value=canonical_to_value, normalized_to_canonical=normalized_to_canonical)
+    return FontWeights(
+        canonical_to_value=canonical_to_value,
+        normalized_to_canonical=normalized_to_canonical,
+    )
 
 
-def standard_weights(cfg: FontWeights) -> List[Tuple[int, str]]:
+def standard_weights(cfg: FontWeights) -> list[tuple[int, str]]:
     """Return [(value, canonical_name), ...] sorted by value asc, then name."""
     items = [(v, k) for k, v in cfg.canonical_to_value.items()]
     items.sort(key=lambda t: (t[0], t[1]))
@@ -101,4 +109,3 @@ def lookup_value(cfg: FontWeights, phrase: str) -> int | None:
 def canonical_name_for(cfg: FontWeights, phrase: str) -> str | None:
     norm = _normalize_phrase(phrase)
     return cfg.normalized_to_canonical.get(norm)
-

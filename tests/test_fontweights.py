@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
 
@@ -14,8 +15,7 @@ def test_load_config_missing_file_raises(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
 def test_parse_and_sort_weights_and_lookup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.chdir(tmp_path)
-    toml = (
-        """
+    toml = """
         [weights]
         Thin = 100
         "Extra-Light" = 200
@@ -24,7 +24,6 @@ def test_parse_and_sort_weights_and_lookup(monkeypatch: pytest.MonkeyPatch, tmp_
         "Extra Light" = "Extra-Light"
         "ULTRA   LIGHT" = "Extra-Light"
         """
-    )
     (tmp_path / "fontweights.toml").write_text(toml, encoding="utf-8")
     from common import fontweights as fw
 
@@ -45,6 +44,7 @@ def test_invalid_weights_table_raises(monkeypatch: pytest.MonkeyPatch, tmp_path:
     # Non-dict weights
     (tmp_path / "fontweights.toml").write_text("weights = 1\n", encoding="utf-8")
     from common import fontweights as fw
+
     with pytest.raises(RuntimeError):
         fw.load_config()
 
@@ -59,10 +59,11 @@ def test_invalid_weights_table_raises(monkeypatch: pytest.MonkeyPatch, tmp_path:
         fw.load_config()
 
 
-def test_alias_warnings_and_ignores(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture):
+def test_alias_warnings_and_ignores(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture
+):
     monkeypatch.chdir(tmp_path)
-    toml = (
-        """
+    toml = """
         [weights]
         Thin = 100
 
@@ -70,7 +71,6 @@ def test_alias_warnings_and_ignores(monkeypatch: pytest.MonkeyPatch, tmp_path: P
         Foo = "Unknown"
         Bad = 123
         """
-    )
     (tmp_path / "fontweights.toml").write_text(toml, encoding="utf-8")
     from common import fontweights as fw
 
@@ -83,4 +83,3 @@ def test_alias_warnings_and_ignores(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert fw.canonical_name_for(cfg, "Foo") is None
     # Valid canonical still works
     assert fw.lookup_value(cfg, "Thin") == 100
-

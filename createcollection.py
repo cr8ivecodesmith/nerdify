@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterable, Sequence
+import contextlib
+from pathlib import Path
 import re
 import sys
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable, Iterable, Iterator, Literal, Sequence
-
+from typing import Literal
 
 SUPPORTED_EXTS = {".ttf", ".otf"}
 ITALIC_TOKENS: set[str] = {"italic", "oblique"}
@@ -104,10 +104,14 @@ def read_family_and_subfamily(path: Path) -> tuple[str | None, str | None]:
     font = TTFont(str(path), lazy=True)
     try:
         name = font["name"]
+
         # Prefer Windows then Mac
         def _get(nid: int) -> str | None:
             for rec in name.names:
-                if rec.nameID == nid and (rec.platformID, rec.platEncID) in ((3, 1), (1, 0)):
+                if rec.nameID == nid and (rec.platformID, rec.platEncID) in (
+                    (3, 1),
+                    (1, 0),
+                ):
                     try:
                         return str(rec.toUnicode()).strip()
                     except Exception:
@@ -117,10 +121,8 @@ def read_family_and_subfamily(path: Path) -> tuple[str | None, str | None]:
         family = _get(16) or _get(1)
         subfam = _get(17) or _get(2)
     finally:
-        try:
+        with contextlib.suppress(Exception):
             font.close()
-        except Exception:
-            pass
     return family, subfam
 
 
@@ -130,8 +132,7 @@ _VERSION_TOKEN_RE = re.compile(r"^(?:v)?\d+(?:[._]\d+)*$")
 def tokenize_stem(stem: str) -> list[str]:
     """Tokenize a filename stem on '-' and '_', to lowercase alphanumeric tokens."""
     raw = re.split(r"[-_]+", stem)
-    toks = [t.strip().lower() for t in raw if t.strip()]
-    return toks
+    return [t.strip().lower() for t in raw if t.strip()]
 
 
 def _strip_nonfamily_tokens(tokens: list[str]) -> list[str]:
@@ -231,7 +232,11 @@ def read_weight_and_italic(path: Path) -> tuple[int | None, bool]:
         if "OS/2" in font:
             os2 = font["OS/2"]
             try:
-                weight = int(getattr(os2, "usWeightClass", None)) if getattr(os2, "usWeightClass", None) is not None else None
+                weight = (
+                    int(getattr(os2, "usWeightClass", None))
+                    if getattr(os2, "usWeightClass", None) is not None
+                    else None
+                )
             except Exception:
                 weight = None
             try:
@@ -248,10 +253,8 @@ def read_weight_and_italic(path: Path) -> tuple[int | None, bool]:
                 pass
         return weight, italic
     finally:
-        try:
+        with contextlib.suppress(Exception):
             font.close()
-        except Exception:
-            pass
 
 
 def sort_fonts(fonts: Sequence[Path]) -> list[Path]:
@@ -285,10 +288,8 @@ def write_collection(fonts: Sequence[Path], out_path: Path, kind: Literal["ttc",
         coll.save(str(out_path))
     finally:
         for f in ttfonts:
-            try:
+            with contextlib.suppress(Exception):
                 f.close()
-            except Exception:
-                pass
 
 
 def build_parser() -> argparse.ArgumentParser:

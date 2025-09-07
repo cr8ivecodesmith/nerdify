@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import argparse
+from collections.abc import Callable, Iterable
+import contextlib
+import math
 from pathlib import Path
 from subprocess import CompletedProcess, run
-from typing import Callable, Iterable, List, Optional, Tuple
-import argparse
-import math
 import sys
 
 from fontTools.ttLib import TTFont  # type: ignore
+
 from common.fontweights import load_config, standard_weights
 
 
@@ -48,7 +50,7 @@ def parse_weight(value: str) -> float:
     """Parse a weight string to float, validating positivity and finiteness."""
     try:
         w = float(value)
-    except Exception as e:  # noqa: BLE001 - return argparse-friendly error upstream
+    except Exception as e:
         raise argparse.ArgumentTypeError(f"invalid weight '{value}'") from e
     if not math.isfinite(w) or w < 0:
         raise argparse.ArgumentTypeError(f"invalid weight '{value}'")
@@ -84,7 +86,6 @@ def _weight_for_filename(weight: float) -> str:
     return str(weight)
 
 
-
 def parse_weight_offset(value: str) -> float:
     """Parse a weight offset string to float.
 
@@ -92,14 +93,16 @@ def parse_weight_offset(value: str) -> float:
     """
     try:
         w = float(value)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise argparse.ArgumentTypeError(f"invalid weight offset '{value}'") from e
     if not math.isfinite(w):
         raise argparse.ArgumentTypeError(f"invalid weight offset '{value}'")
     return w
 
 
-def compose_weight_basename(font: Path, weight_name: str, base: int, resolved: float, offset: float) -> str:
+def compose_weight_basename(
+    font: Path, weight_name: str, base: int, resolved: float, offset: float
+) -> str:
     """Return output basename (without extension) for a font/weight.
 
     - If offset is zero: <stem>-<WeightName>
@@ -111,7 +114,9 @@ def compose_weight_basename(font: Path, weight_name: str, base: int, resolved: f
     return f"{stem}-{weight_name}-{_weight_for_filename(resolved)}"
 
 
-def _rewrite_internal_names(ttf_path: Path, *, weight_name: str, resolved_weight: float, offset: float) -> None:
+def _rewrite_internal_names(
+    ttf_path: Path, *, weight_name: str, resolved_weight: float, offset: float
+) -> None:
     """Rewrite internal name records to include weight name and resolved weight when offset != 0.
 
     - Subfamily (nameID=2): set to `<WeightName>` or `<WeightName>-<Resolved>` when offset != 0.
@@ -136,7 +141,9 @@ def _rewrite_internal_names(ttf_path: Path, *, weight_name: str, resolved_weight
         if not family:
             family = ttf_path.stem
 
-        subfamily = weight_name if offset == 0 else f"{weight_name}-{_weight_for_filename(resolved_weight)}"
+        subfamily = (
+            weight_name if offset == 0 else f"{weight_name}-{_weight_for_filename(resolved_weight)}"
+        )
         full_name = f"{family} {subfamily}".strip()
         ps_name = f"{family.replace(' ', '')}-{subfamily.replace(' ', '')}"
 
@@ -153,13 +160,13 @@ def _rewrite_internal_names(ttf_path: Path, *, weight_name: str, resolved_weight
 
         font.save(ttf_path)
     finally:
-        try:
+        with contextlib.suppress(Exception):
             font.close()
-        except Exception:
-            pass
 
 
-def build_mutator_argv(font: Path, weight: float, out_path: Path, *, py_exe: str = sys.executable) -> list[str]:
+def build_mutator_argv(
+    font: Path, weight: float, out_path: Path, *, py_exe: str = sys.executable
+) -> list[str]:
     """Build argv to invoke FontTools varLib.mutator for a font/weight/output."""
     return [
         py_exe,
@@ -245,10 +252,13 @@ def process_font_all_weights(
             # Attempt to update internal names; non-fatal if it fails (e.g., in tests)
             try:
                 _rewrite_internal_names(p, weight_name=name, resolved_weight=target, offset=offset)
-            except Exception as ie:  # noqa: BLE001
-                print(f"WARN {font.name} {name}: could not rewrite internal names: {ie}", file=sys.stderr)
+            except Exception as ie:
+                print(
+                    f"WARN {font.name} {name}: could not rewrite internal names: {ie}",
+                    file=sys.stderr,
+                )
             created.append(p)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"FAIL {font.name} {name}: {e}", file=sys.stderr)
     return created
 

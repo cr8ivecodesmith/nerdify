@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Sequence
 import io
-import sys
-import zipfile
 from pathlib import Path
-from typing import Callable, Iterable, List, Sequence
 from subprocess import CompletedProcess
-
+import zipfile
 
 FONT_EXTENSIONS = {".ttf", ".otf", ".ttc"}
 
@@ -64,7 +62,9 @@ def check_fontforge_available(*, run: Callable[[Sequence[str]], CompletedProcess
         )
 
 
-def download_fontpatcher_zip(dest_zip: Path, opener: Callable[[str], io.BufferedReader] | None = None) -> None:
+def download_fontpatcher_zip(
+    dest_zip: Path, opener: Callable[[str], io.BufferedReader] | None = None
+) -> None:
     """Download the FontPatcher.zip archive to `dest_zip`.
 
     Attempts to use `requests` if available, otherwise falls back to urllib.
@@ -104,8 +104,11 @@ def extract_zip(zip_path: Path, target_dir: Path) -> None:
         # Basic zip slip protection
         for member in zf.infolist():
             extracted_path = (target_dir / member.filename).resolve()
-            if target_dir.resolve() not in extracted_path.parents and extracted_path != target_dir.resolve():
-                raise RuntimeError("Unsafe path in archive: %s" % member.filename)
+            if (
+                target_dir.resolve() not in extracted_path.parents
+                and extracted_path != target_dir.resolve()
+            ):
+                raise RuntimeError(f"Unsafe path in archive: {member.filename}")
         zf.extractall(target_dir)
 
 
@@ -157,14 +160,21 @@ def _snapshot_files(d: Path) -> set[Path]:
     return {p.resolve() for p in d.glob("**/*") if p.is_file()}
 
 
-def patch_one_font(font: Path, patcher: Path, out_dir: Path, *, run_in_cwd: Callable[[Sequence[str], Path], CompletedProcess]) -> list[Path]:
+def patch_one_font(
+    font: Path,
+    patcher: Path,
+    out_dir: Path,
+    *,
+    run_in_cwd: Callable[[Sequence[str], Path], CompletedProcess],
+) -> list[Path]:
     """Patch a single font by running the patcher in a temp dir, then move outputs.
 
     Returns the list of destination file Paths moved into `out_dir`.
     Raises RuntimeError if the patcher returns a non-zero exit code.
     """
-    import tempfile
     import shutil
+    import tempfile
+
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = build_patch_command("fontforge", patcher, font)
 
@@ -190,15 +200,27 @@ def patch_one_font(font: Path, patcher: Path, out_dir: Path, *, run_in_cwd: Call
         return moved
 
 
-def main(argv: Sequence[str] | None = None) -> int:  # pragma: no cover - CLI wiring, tested indirectly
+def main(
+    argv: Sequence[str] | None = None,
+) -> int:  # pragma: no cover - CLI wiring, tested indirectly
     import argparse
     import subprocess
 
     parser = argparse.ArgumentParser(description="Patch fonts with Nerd Fonts glyphs")
     parser.add_argument("paths", nargs="+", help="Font files or directories to process")
     parser.add_argument("-o", "--output", dest="output", default=".", help="Output directory")
-    parser.add_argument("--fontpatcher-dir", dest="fontpatcher_dir", default=None, help="Existing FontPatcher directory")
-    parser.add_argument("--cache-dir", dest="cache_dir", default=str(Path.cwd() / "FontPatcher"), help="Directory for downloads")
+    parser.add_argument(
+        "--fontpatcher-dir",
+        dest="fontpatcher_dir",
+        default=None,
+        help="Existing FontPatcher directory",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        dest="cache_dir",
+        default=str(Path.cwd() / "FontPatcher"),
+        help="Directory for downloads",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     out_dir = Path(args.output)
@@ -222,8 +244,10 @@ def main(argv: Sequence[str] | None = None) -> int:  # pragma: no cover - CLI wi
     failures = 0
     for font in fonts:
         try:
+
             def run_in_cwd(argv: Sequence[str], cwd: Path) -> CompletedProcess:
                 import subprocess
+
                 return subprocess.run(argv, cwd=str(cwd), capture_output=True, text=True)
 
             patch_one_font(font, patcher, out_dir, run_in_cwd=run_in_cwd)

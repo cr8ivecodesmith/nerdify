@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from subprocess import CompletedProcess
-import builtins
-import types
-import pytest
 import sys
+
+import pytest
 
 # Ensure project root is importable
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,10 +31,14 @@ def test_discover_fonts_mixed(tmp_path: Path):
     nerdify = importlib.import_module("nerdify")
 
     # Create a nested directory with fonts and non-fonts
-    d1 = tmp_path / "a" / "b"; d1.mkdir(parents=True)
-    f1 = tmp_path / "root.ttf"; f1.write_bytes(b"\0")
-    f2 = d1 / "sub.otf"; f2.write_bytes(b"\0")
-    nf = d1 / "readme.txt"; nf.write_text("hi")
+    d1 = tmp_path / "a" / "b"
+    d1.mkdir(parents=True)
+    f1 = tmp_path / "root.ttf"
+    f1.write_bytes(b"\0")
+    f2 = d1 / "sub.otf"
+    f2.write_bytes(b"\0")
+    nf = d1 / "readme.txt"
+    nf.write_text("hi")
     # Duplicate path in input
     inputs = [f1, tmp_path, Path("/nonexistent/nowhere")]  # nonexistent ignored
 
@@ -104,6 +107,7 @@ def test_check_fontforge_available_ok(monkeypatch: pytest.MonkeyPatch):
 
 def test_check_fontforge_available_fail(monkeypatch: pytest.MonkeyPatch):
     import importlib
+
     nerdify = importlib.import_module("nerdify")
 
     def bad_run(argv: list[str]):
@@ -136,7 +140,7 @@ def test_ensure_font_patcher_downloads_if_missing(tmp_path: Path, monkeypatch: p
     monkeypatch.chdir(tmp_path)
 
     # Monkeypatch download/extract to avoid network and actually create the file
-    created_zip = tmp_path / "FontPatcher.zip"
+    tmp_path / "FontPatcher.zip"
 
     def fake_download(dest_zip: Path, opener=None):
         dest_zip.write_bytes(b"PK\x03\x04fake")
@@ -157,8 +161,18 @@ def test_patch_font_success_and_failure(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
     nerdify = importlib.import_module("nerdify")
 
-    ok_cmd = ["fontforge", "-script", str(tmp_path / "font-patcher"), str(tmp_path / "F.ttf")]
-    fail_cmd = ["fontforge", "-script", str(tmp_path / "font-patcher"), str(tmp_path / "G.ttf")]
+    ok_cmd = [
+        "fontforge",
+        "-script",
+        str(tmp_path / "font-patcher"),
+        str(tmp_path / "F.ttf"),
+    ]
+    fail_cmd = [
+        "fontforge",
+        "-script",
+        str(tmp_path / "font-patcher"),
+        str(tmp_path / "G.ttf"),
+    ]
 
     def runner(argv: list[str]):
         if argv == ok_cmd:

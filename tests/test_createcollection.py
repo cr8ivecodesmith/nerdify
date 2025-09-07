@@ -1,6 +1,3 @@
-import io
-import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -37,7 +34,7 @@ def test_discover_fonts(tdir: Path):
 
 
 def test_sniff_sfnt_type_and_infer(tdir: Path):
-    from createcollection import sniff_sfnt_type, infer_collection_type
+    from createcollection import infer_collection_type, sniff_sfnt_type
 
     ttf = tdir / "a.ttf"
     otf = tdir / "b.otf"
@@ -177,7 +174,7 @@ def test_cli_dry_run(monkeypatch, tdir: Path, capsys):
     monkeypatch.setattr(cc, "read_family_and_subfamily", lambda p: (None, None))
     monkeypatch.setattr(cc, "read_weight_and_italic", lambda p: (400, False))
 
-    rc = cc.main([str(tdir), "--dry-run", "--name", "MyFont"]) 
+    rc = cc.main([str(tdir), "--dry-run", "--name", "MyFont"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "type=ttc" in out
