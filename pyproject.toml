@@ -1,0 +1,68 @@
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+# Keep Black focused on source, skip heavy/binary folders
+extend-exclude = "/(FontPatcher|fonts|fonts_weighted|patched|collection|docs/_build)/"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+  "FontPatcher",
+  "fonts",
+  "fonts_weighted",
+  "patched",
+  "collection",
+  "docs/_build",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort (import sorting)
+  "UP",  # pyupgrade (modernize syntax)
+  "N",   # pep8-naming
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+  "C90", # mccabe complexity
+  "D",   # pydocstyle (docstrings)
+  "PT",  # pytest style
+  "ANN", # flake8-annotations
+  "ERA", # eradicate commented-out code
+  "ICN", # import conventions
+  "ISC", # implicit string concatenation
+  "TID", # tidy imports
+  "PTH", # prefer pathlib over os.path
+  "RET", # return statement style
+  "RUF", # Ruff-specific rules
+]
+
+ignore = [
+  "E203",   # space before : (compatible with Black)
+  "ANN401", # allow use of Any in some cases
+  "D100",   # missing docstring in public module
+  "D104",   # missing docstring in public package
+  "D105",   # magic method docstring not required
+  "D107",   # __init__ docstring not required
+  "D203",   # no blank line before class docstring
+  "D213",   # allow summary on first line (conflicts with D212)
+  "D417",   # allow Google/Numpy args section to be optional
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+known-first-party = []
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["ANN", "D"]
